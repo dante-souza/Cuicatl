@@ -44,10 +44,10 @@ foreach ($root in $searchRoots) {
 }
 
 $selectedHome = $null
-foreach ($home in $candidateHomes | Select-Object -Unique) {
-    $javaExe = Join-Path $home 'bin\java.exe'
+foreach ($candidateHome in $candidateHomes | Select-Object -Unique) {
+    $javaExe = Join-Path $candidateHome 'bin\java.exe'
     if ((Get-JavaMajor $javaExe) -eq 17) {
-        $selectedHome = $home
+        $selectedHome = $candidateHome
         break
     }
 }
