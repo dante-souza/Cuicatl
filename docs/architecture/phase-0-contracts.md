@@ -18,6 +18,8 @@ This document records the implementation contract for Phase 0A/0B. It does not c
 
 The existing Android bootstrap is retained under Planning Revision 2.
 
+CI rejected the initially selected Compose BOM 2026.09.00 / Core 1.19.1 because those releases require compileSdk 37 and AGP 9. The foundation therefore pins Compose BOM 2026.04.01, Activity Compose 1.12.4, and Core KTX 1.17.0 while retaining compileSdk 36 / AGP 8.13.2. This is an evidence-driven compatibility correction, not a downgrade of target-device support.
+
 ## Initial session contract
 
 The initial lifecycle is:

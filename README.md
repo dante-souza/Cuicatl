@@ -27,7 +27,9 @@ Microphone capture never starts automatically. Pressing **Start probe** is requi
 - Gradle 8.13
 - Android Gradle Plugin 8.13.2
 - Kotlin 2.3.21
-- Compose BOM 2026.09.00
+- Compose BOM 2026.04.01 (Compose 1.11 line)
+- Activity Compose 1.12.4
+- Core KTX 1.17.0
 
 The Samsung Galaxy J8 (Android 10 / API 29) is the Phase 0 physical capture-probe target.
 
