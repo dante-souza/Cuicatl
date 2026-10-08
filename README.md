@@ -4,18 +4,19 @@ Cuicatl is an Android sound-analysis platform in the CATL family: capture an aco
 
 ## Project status
 
-**Planning Revision 2 is the active baseline. Phase 0 is now “Foundation and capture probe.”**
+**Planning Revision 2 is active. Phase 0 — Foundation and capture probe is in progress.**
 
-The existing Android/Compose bootstrap is retained. Phase 0A covers the minimum runnable foundation; Phase 0B adds an explicit-start J8 PCM capture/timing probe. The export layout remains provisional until a real Phase 1 capture/export fixture is inspected independently.
+Phase 0A retains the Android/Compose bootstrap, branding, toolchain, CI, and J8-safe developer commands. Phase 0B now contains an explicit-start, bounded diagnostic `AudioRecord` path for the J8. It reports source/rate attempts, selected stream configuration, route, monotonic timestamp availability, sample counts, and digital RMS/peak levels.
+
+The diagnostic values are **dBFS, not SPL**. The public export layout remains provisional until a real Phase 1 session is captured/exported and inspected independently.
 
 - [Detailed development plan — Revision 2](docs/planning/cuicatl-development-plan-2026-10-08.md)
 - [Planning review disposition](docs/planning/cuicatl-planning-review-disposition-2026-10-08.md)
 - [Phase 0 implementation contracts](docs/architecture/phase-0-contracts.md)
-- [Phase 0 validation record](docs/validation/phase-0/README.md)
+- [Phase 0 J8 checklist](docs/validation/phase-0/j8-checklist.md)
 - [Approved Cuicatl icon](docs/assets/branding/cuicatl-app-icon.png)
-- [CATL family visual identity](docs/assets/branding/catl-family-visual-identity.png)
 
-Microphone capture never starts automatically. The Phase 0B diagnostic path starts only after an explicit user action and runtime permission.
+Microphone capture never starts automatically. Pressing **Start probe** is required; if permission is missing, the runtime permission prompt is triggered by that explicit action.
 
 ## Android baseline
 
@@ -28,23 +29,16 @@ Microphone capture never starts automatically. The Phase 0B diagnostic path star
 - Kotlin 2.3.21
 - Compose BOM 2026.09.00
 
-The Samsung Galaxy J8 (Android 10 / API 29) is the initial physical capture-probe target.
+The Samsung Galaxy J8 (Android 10 / API 29) is the Phase 0 physical capture-probe target.
 
 ## Development
 
-Run the software gate:
-
 ```sh
 make check
-```
-
-Build the debug APK:
-
-```sh
 make build-debug
 ```
 
-On the Windows lab host, J8 device actions validate the known lab device before installation/open:
+On the Windows lab host:
 
 ```powershell
 make j8-preflight
@@ -52,22 +46,37 @@ make install-j8
 make open-j8
 ```
 
+To preserve the diagnostic stream from the device:
+
+```powershell
+make probe-log-j8
+```
+
 The expected debug APK is `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Current Phase 0B probe
+
+The bounded probe tries mono PCM16 using:
+
+1. `UNPROCESSED` at 48 kHz / 44.1 kHz when Android advertises support;
+2. `VOICE_RECOGNITION` at 48 kHz / 44.1 kHz;
+3. `MIC` at 48 kHz / 44.1 kHz.
+
+The first initialized path is used for a maximum 10-second diagnostic run. Initialization proves only that the digital path opened; it does not establish physical microphone bandwidth, flatness, calibration, or accuracy.
 
 ## Product direction
 
-- Measurement sessions are the central unit of work.
-- Session CSV export/share is mandatory, but schema 1 is finalized only from a real Phase 1 export fixture.
-- Initial sessions use Start/Stop and one fixed capture/analysis configuration.
-- Route, weighting, or reference-adjustment changes start a new session.
-- Pause/resume and multi-segment aggregation are later capabilities.
-- Missing observations are gaps, never fabricated silence.
-- Estimated SPL is blocked until a reference procedure and evidence path are chosen.
-- A bounded basic FFT experiment may happen early if it helps the first acoustic task, but it does not replace the session/export milestone.
+- Initial sessions use Start/Stop and one fixed configuration.
+- Pause/resume and multi-segment aggregation are deferred.
+- Missing observations are never fabricated as silence.
+- Persistence is selected in Phase 1 from a bounded recovery experiment.
+- Schema 1 is finalized only from a real export fixture.
+- Estimated SPL waits for a chosen and documented reference procedure.
+- A bounded FFT experiment may happen early if useful, but it cannot displace the session/export milestone.
 
 ## Contribution workflow
 
-Work proceeds through `feature/phase-*` branches into `dev`, then into `main`. Preserve published history with merge commits; do not squash phase archaeology. Device evidence and artifacts accompany completed milestones.
+Work proceeds through `feature/phase-*` → `dev` → `main`. Preserve published history with merge commits; do not squash phase archaeology.
 
 ## License
 

@@ -3,7 +3,6 @@ package io.github.dante_souza.cuicatl.domain
 
 data class MeasurementFrame(
     val sessionId: String,
-    val segmentId: String,
     val sequence: Long,
     val elapsedStartMillis: Long,
     val durationMillis: Long,

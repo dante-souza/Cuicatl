@@ -1,66 +1,104 @@
-# Phase 0 — foundation contracts
+# Phase 0 — foundation and capture-probe contracts
 
-Date: 2026-10-08
+Date: 2026-10-08. Planning baseline: Revision 2.
 
-This document turns the Phase 0 planning baseline into implementation contracts. It does not claim microphone capture or acoustic accuracy.
+This document records the implementation contract for Phase 0A/0B. It does not claim calibrated acoustic accuracy, a final export schema, or a release-ready persistence design.
 
-## Android identity and compatibility
+## Phase 0A foundation
 
 - Application ID / namespace: `io.github.dante_souza.cuicatl`
 - Minimum Android API: 26
 - Compile / target API: 36
-- JDK: 17
-- Gradle: 8.13
-- Android Gradle Plugin: 8.13.2
-- Kotlin: 2.3.21
-- Compose BOM: 2026.09.00
+- JDK 17
+- Gradle 8.13
+- Android Gradle Plugin 8.13.2
+- Kotlin 2.3.21
+- Compose BOM 2026.09.00
 - Original Cuicatl source files use `SPDX-License-Identifier: AGPL-3.0-or-later`.
 
-The Samsung Galaxy J8 (Android 10 / API 29) remains the Phase 0 physical-device gate.
+The existing Android bootstrap is retained under Planning Revision 2.
 
-## Session contract
+## Initial session contract
 
-A session has one identity and moves through `READY → STARTING → RUNNING → FINALIZING → SAVED`; the persisted model also admits `PAUSED` for the later pause/resume increment.
+The initial lifecycle is:
 
-A saved session outcome is explicit: `COMPLETED`, `INTERRUPTED`, or `RECOVERED`. A lifecycle interruption must never be presented as a clean completion.
+`READY → STARTING → RUNNING → FINALIZING → SAVED`
 
-The UI is not the capture owner or authoritative data store. Page changes and recomposition must not create or reset sessions.
+A failed Start returns to `READY` with an explicit readiness reason. Saved outcomes are `COMPLETED`, `INTERRUPTED`, or `RECOVERED`.
 
-## Readiness contract
+v0.1.0 begins with Start/Stop and one fixed input/analysis configuration per session. Pause/resume and multi-segment aggregation are later capabilities. An input route, weighting, or reference-adjustment change ends the current measurement and requires a new session.
 
-Readiness is a reasoned domain state rather than a UI boolean. Phase 0 defines reasons for permission, unavailable microphone, unsupported configuration, platform restrictions, and unknown failure. Phase 1 will provide the Android adapter that resolves these states.
+The UI is not the future authoritative capture owner or persistence layer. Phase 0B is intentionally a bounded diagnostic path, not the final session service.
 
-Opening Cuicatl does not begin microphone capture. The Phase 0 Start control is intentionally disabled.
+## Readiness and explicit start
+
+Opening Cuicatl never requests microphone permission and never starts recording.
+
+The user must press **Start probe**. If permission is missing, that action launches the Android runtime permission request. A granted request continues the same explicit user action into the diagnostic probe. Denial creates no capture.
+
+## Phase 0B J8 diagnostic probe
+
+The diagnostic probe is bounded to at most 10 seconds per run and tries mono PCM16 configurations in this order:
+
+1. `UNPROCESSED` at 48 kHz, then 44.1 kHz, but only when Android advertises unprocessed-source support.
+2. `VOICE_RECOGNITION` at 48 kHz, then 44.1 kHz.
+3. `MIC` at 48 kHz, then 44.1 kHz.
+
+The first initialized configuration is used. The probe reports:
+
+- requested/selected source and actual `AudioRecord.sampleRate`;
+- attempted source/rate combinations;
+- sample count and monotonic elapsed duration;
+- current block RMS and sample peak in dBFS;
+- routed input reported by Android;
+- `AudioTimestamp` availability using the monotonic timebase, or explicit fallback observation;
+- platform availability of AEC, AGC, and noise suppression.
+
+Processing availability is **not** evidence that a particular effect is active or inactive in the vendor microphone path. A successful source/rate initialization is **not** evidence of physical microphone bandwidth or acoustic accuracy.
+
+Probe snapshots are also emitted to logcat with tag `CuicatlAudioProbe` so the device run can be preserved as evidence.
 
 ## Digital measurement convention
 
-For normalized PCM samples `x[n]`:
+For normalized PCM16 samples `x[n]` using divisor 32768:
 
 - `mean_square_fs = sum(x[n]^2) / N`
 - `rms_fs = sqrt(mean_square_fs)`
 - `rms_dbfs = 10 * log10(mean_square_fs)`
-- exact digital zero has no finite dBFS value and is represented by an empty logarithmic field plus `DIGITAL_ZERO`
-- missing input is `MISSING`; it is not converted to zero
-- invalid data is `INVALID`
+- sample peak dBFS uses `20 * log10(max(abs(x[n])))`
+- exact digital zero has no finite logarithmic value
+- missing input is not converted to silence
 
-Under this convention, a full-scale sine is approximately −3.0103 dBFS RMS. The executable numerical tests freeze that behavior.
+The 32768 divisor preserves the signed PCM16 negative endpoint at −1.0 while the positive endpoint is slightly below +1.0; later implementation specifications must retain or explicitly revise this convention.
 
-For calibrated levels, equivalent level must use duration-weighted energy:
+A full-scale sine is approximately −3.0103 dBFS RMS under the established numerical convention.
+
+For later calibrated levels:
 
 `Leq = 10 * log10(sum(t_i * 10^(L_i/10)) / sum(t_i))`
 
-An equal-duration 60 dB + 80 dB fixture therefore yields approximately 77.0329 dB, not 70 dB.
+An equal-duration 60 dB + 80 dB fixture is approximately 77.0329 dB, not 70 dB.
 
 ## Timing contract
 
-Phase 1 will use monotonic timing for capture duration and sequence ordering, plus an independent UTC session anchor for export. A measurement frame carries an elapsed start, actual duration, sample count, and sample rate. Missing or interrupted time becomes a gap/event rather than a fabricated frame.
+Phase 0B checks whether `AudioRecord.getTimestamp(..., TIMEBASE_MONOTONIC)` is available on the actual J8 path. Monotonic `elapsedRealtime` is reported as the diagnostic fallback observation.
 
-## Export contract
+Phase 1 will convert the probe findings into the durable capture-time policy. No Compose delivery timestamp is treated as sample capture time.
 
-CSV schema version 1 is frozen by `CsvSchema` and the planning document. Essential fields include session/segment identity, timing, configured sample rate, digital energy/RMS/peak, calibration/weighting context, validity, clipping count, and quality flags.
+## Export layout is provisional
 
-Phase 0 freezes names and semantics. Phase 1 implements serialization, saved sessions, Android sharing, and independent reconstruction fixtures.
+There is deliberately no frozen schema version 1 in Phase 0.
+
+`ProvisionalExportFields` records candidate context/measurement fields so the first real capture/export fixture is not designed from memory. Exact names, repeated metadata, packaging, spreadsheet-safe text rules, and schema version 1 are finalized only after Phase 1 captures, exports, and independently inspects real data.
+
+The initial session model has no public multi-segment field.
+
+## Persistence remains undecided
+
+Phase 0 does not choose Room/SQLite or an append-file format. Phase 1 performs a bounded preservation/recovery experiment and selects the smallest design that passes save, reopen, export, interruption, and readable-prefix requirements.
 
 ## Presentation contract
 
-Phase 0 exposes only Meter and History. Neither screen displays fake sensor data. The shell explicitly states that no measurement exists and that automatic capture is disabled. Later analysis pages are added only when their underlying capability exists.
+Phase 0 exposes Meter and History navigation, but only Meter contains live diagnostic data. History explicitly states that Phase 0B does not persist the public history model.
+
+No Phase 0 display presents dBFS as SPL.

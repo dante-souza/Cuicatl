@@ -13,7 +13,6 @@ enum class SessionState {
     READY,
     STARTING,
     RUNNING,
-    PAUSED,
     FINALIZING,
     SAVED,
 }
