@@ -1,0 +1,10 @@
+# Normalize text while preserving platform-specific script requirements.
+* text=auto
+
+gradlew text eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+
+gradlew.bat text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
