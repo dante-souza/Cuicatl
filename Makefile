@@ -1,12 +1,18 @@
 SHELL := /bin/sh
 
+ifeq ($(OS),Windows_NT)
+GRADLE := cmd.exe /c gradlew.bat
+else
+GRADLE := ./gradlew
+endif
+
 .PHONY: check build-debug install-j8 open-j8 j8-preflight probe-log-j8
 
 check:
-	./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+	$(GRADLE) --no-daemon testDebugUnitTest lintDebug assembleDebug
 
 build-debug:
-	./gradlew --no-daemon assembleDebug
+	$(GRADLE) --no-daemon assembleDebug
 
 j8-preflight:
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-j8.ps1
