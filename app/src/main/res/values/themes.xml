@@ -9,7 +9,7 @@
 
     <style name="Theme.Cuicatl.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/cuicatl_splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/cuicatl_app_icon</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
         <item name="postSplashScreenTheme">@style/Theme.Cuicatl</item>
     </style>
 </resources>
