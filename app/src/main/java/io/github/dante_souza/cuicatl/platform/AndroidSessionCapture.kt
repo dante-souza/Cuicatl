@@ -83,21 +83,22 @@ class AndroidSessionCapture(
             val selection = openFirstSupportedRecord()
                 ?: error("No supported mono PCM16 source/rate configuration initialized")
 
-            record = selection.record
-            activeRecord = record
-            record.startRecording()
-            if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            val active = selection.record
+            record = active
+            activeRecord = active
+            active.startRecording()
+            if (active.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 error("AudioRecord did not enter RECORDSTATE_RECORDING")
             }
 
             startedAtElapsedRealtime = SystemClock.elapsedRealtime()
-            val rate = record.sampleRate
+            val rate = active.sampleRate
             val intervalSamples = maxOf(1, rate / 10)
             val buffer = ShortArray(maxOf(1024, intervalSamples))
             val configuration = CaptureConfiguration(
-                source = sourceName(record.audioSource),
+                source = sourceName(active.audioSource),
                 sampleRateHz = rate,
-                inputIdentity = describeRoute(record.routedDevice),
+                inputIdentity = describeRoute(active.routedDevice),
                 processingState = processingAvailability(),
             )
             onStarted(configuration)
@@ -133,7 +134,7 @@ class AndroidSessionCapture(
                         signalState =
                             if (meanSquare == 0.0) SignalState.DIGITAL_ZERO
                             else SignalState.NONZERO,
-                        timingQuality = timingQuality(record),
+                        timingQuality = timingQuality(active),
                         clippedSampleCount = intervalClipped,
                         qualityFlags = qualityFlags,
                     ),
@@ -148,7 +149,7 @@ class AndroidSessionCapture(
             }
 
             while (running.get()) {
-                val read = record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
+                val read = active.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
                 if (read < 0) {
                     if (!running.get() || stopRequested.get()) break
                     error("AudioRecord.read failed with code " + read)
