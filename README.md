@@ -4,9 +4,10 @@ Cuicatl is a planned Android sound-analysis platform in the CATL family: capture
 
 ## Project status
 
-The visual identity is approved. Development planning is documented; the Android application has not yet been implemented.
+The visual identity is approved. Planning Revision 2 incorporates the independent review and prioritizes a runnable J8 capture probe. Android foundation work is underway on its feature branch; capture and release gates have not yet passed.
 
-- [Detailed development plan and technical report](docs/planning/cuicatl-development-plan-2026-10-08.md)
+- [Detailed development plan and technical report — Revision 2](docs/planning/cuicatl-development-plan-2026-10-08.md)
+- [Planning review decisions](docs/planning/cuicatl-planning-review-disposition-2026-10-08.md)
 - [Approved Cuicatl icon](docs/assets/branding/cuicatl-app-icon.png)
 - [Approved splash-screen direction](docs/assets/branding/cuicatl-splash-screen.png)
 - [CATL family visual identity](docs/assets/branding/catl-family-visual-identity.png)
@@ -21,7 +22,7 @@ The visual identity is approved. Development planning is documented; the Android
 - Calibration, units, missing data, and input limitations remain explicit.
 - Processing and session storage are local by default.
 
-The proposed first public release includes capture, a sound meter, saved sessions, history, and CSV export/share. FFT and additional analysis views follow in separate releases. See the plan for phase gates, unresolved decisions, and validation requirements.
+The first usable milestone includes Start/Stop capture, digital levels, basic history, saved sessions, and self-contained CSV export/share. The intended first public release adds a validated meter and the chosen reference-adjustment workflow, subject to probe/calibration findings. A basic FFT experiment may run early; full spectrum and extended analysis have separate gates. See the plan for provisional choices and validation requirements.
 
 ## Contribution workflow
 
