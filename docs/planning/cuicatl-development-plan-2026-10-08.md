@@ -1,20 +1,26 @@
 # Cuicatl — development plan and technical report
 
-Date: 2026-10-08 (America/Sao_Paulo). Planning revision: 1.
+Date: 2026-10-08 (America/Sao_Paulo). Planning revision: 2.
 
 Repository: <https://github.com/dante-souza/Cuicatl>.
 
-Status: initial development baseline. This document specifies intended behavior and acceptance gates; it does not claim that the application, measurements, tests, or releases already exist. Implementation choices marked **proposed** remain subject to device evidence and design review.
+Status: reviewed planning baseline with a revised execution order. The author reassessment and supplied independent review have been reconciled in the [review-disposition record](cuicatl-planning-review-disposition-2026-10-08.md). This document specifies intended behavior and acceptance gates; it does not claim that capture, calibration, tests, or release gates have passed. Implementation choices marked **proposed** remain subject to device evidence and design review.
+
+Revision 1 remains available in [Git history at the published planning baseline](https://github.com/dante-souza/Cuicatl/blob/7a96706f2114f411bfc5f59fcaff57733557da2d/docs/planning/cuicatl-development-plan-2026-10-08.md). Revision 2 changes scope and sequencing without marking application milestones complete.
 
 ## 1. Product intent and established requirements
 
-Cuicatl is the sound-analysis member of the CATL family. It should support field observation, acoustic investigation, and inspection of recorded measurement sessions. Its identity is distinct from Yeyecatl while sharing a family design language.
+Cuicatl is the sound-analysis member of the CATL family. Its identity is distinct from Yeyecatl while sharing a family design language.
+
+Proposed first-use-case statement: Cuicatl initially serves hands-on Android users who want to capture an acoustic event, inspect changes over time, and share timestamped results with their input and calibration context. Dante is the first intended validation user, with existing iNVH experience and an explicit need for portable sessions. The specific acoustic task and setting remain to be chosen before a useful-session acceptance test; this is a use-case hypothesis, not evidence of wider demand or a claim that another application lacks these capabilities.
+
+First practical acceptance scenario: capture a labeled event on the J8, inspect its level history, stop and reopen it, share the measurement CSV, and interpret the result outside the application. The workflow should demonstrate useful observation even while SPL estimation is still being evaluated.
 
 The central workflow is: start a measurement session, observe the sound through suitable views, stop and preserve the session, reopen it, and export/share enough data to understand the result outside the application.
 
 | Requirement | Planning treatment |
 | --- | --- |
-| Approved visual identity | Preserve the accepted icon, splash direction, and family assets. Adapt them to Android resources during Phase 0. |
+| Approved visual identity | Preserve the accepted icon, splash direction, and family assets. Adapt them to Android resources during the minimum foundation work. |
 | Session CSV export/share | Mandatory core functionality, implemented with the first end-to-end capture session. |
 | Lateral paging | Swipe between analysis pages, with visible selectors for accessibility and direct navigation. |
 | Session continuity | Page changes must preserve capture, timing, statistics, and session identity. |
@@ -29,13 +35,19 @@ Bosch iNVH and Decibel X are functional references from the product discussion. 
 
 Inspection of `main` at commit `c7452773eac42c1e7fad96211347906a4344ce10` found the AGPL license, a gitignore, and approved branding assets. There was no Android project, root README, CI configuration, or `AGENTS.md`. At inspection, `main` was the only branch.
 
+The historical inspection above describes the original baseline. At the Revision 2 check, Android foundation work had started on `feature/phase-0-foundation-contracts`; it had not been promoted to `main`. The existing bootstrap remains useful and is not restarted by this revision.
+
 Existing branding assets include `cuicatl-app-icon.png`, `cuicatl-splash-screen.png`, `catl-family-visual-identity.png`, and the Yeyecatl reference icon. The existing branding README contains older WebP filenames and wording about a future identity board; Phase 0 should reconcile that inventory with the files actually present. The assets themselves remain the visual baseline.
 
 ### First public release: proposed v0.1.0
 
-Include microphone readiness, user-started capture, digital input levels, estimated SPL when a suitable calibration profile is present, A/Z frequency weighting, clearly defined current/minimum/maximum/equivalent levels, saved sessions, Meter/History paging, history inspection, CSV export, and Android sharing. Include interruption handling and preservation of completed data.
+Include microphone readiness, user-started Start/Stop capture, digital input levels, a fixed input/analysis configuration per session, saved sessions, Meter/History paging, basic history inspection, a directly shareable measurement CSV, and Android sharing. Preserve available data and the session outcome when capture is interrupted.
 
-Do not make the first release depend on FFT, octave analysis, spectrograms, complete audio recording, comparison dashboards, or vibration. Those capabilities have separate validation costs and can follow without weakening session portability.
+The intended sound-meter capability includes A/Z analysis, clearly defined current/minimum/maximum/equivalent levels, and estimated SPL when a suitable reference adjustment is available. Decide the reference procedure and its evidence requirements before implementing estimated SPL. After the probe and reference-workflow review, record whether these features can responsibly form part of v0.1.0. An earlier digital-only test APK is a useful development milestone, not an implied calibrated meter.
+
+Use one active calibration configuration initially and preserve its snapshot in each applicable session. Pause/resume, multiple capture segments, calibration-profile collections, and the rich export bundle are later capabilities.
+
+Run a bounded basic FFT experiment earlier if it helps the first acoustic task. Include it in v0.1.0 only when usefulness, numerical checks, and J8 cost justify it; an early experiment does not make the complete Phase 4 spectrum feature set mandatory. Octave analysis, spectrograms, complete audio recording, comparison dashboards, and vibration remain later scope.
 
 Vibration remains a candidate for later scope review. It would require accelerometer-specific units, gravity handling, sensor timing, mounting assumptions, and validation; it is not an approved first-release requirement. Sound intensity in physical units is also outside the initial scope: the baseline measures digital input and estimates sound pressure level, not a directional intensity field.
 
@@ -82,11 +94,13 @@ Do not average decibel values arithmetically. Equal-duration intervals at 60 and
 
 A single-point profile provides a sensitivity correction: reference SPL minus measured digital level under the same calibration conditions. It cannot establish frequency response, usable dynamic range, or accuracy across every acoustic condition. External calibrated microphones improved agreement in the NIOSH follow-up study [S6]; those findings are not accuracy claims for Cuicatl or the J8.
 
-Each profile should contain an immutable ID/version, device and input identity, capture source, sample format/rate, reference method and level, relevant weighting, correction, creation time, and notes. Bind a profile to the applicable capture configuration. A changed input invalidates automatic reuse until compatibility is established.
+The initial reference-adjustment configuration should contain an immutable ID/version, device and input identity, capture source, sample format/rate, reference method and level, relevant weighting, correction, creation time, and notes. One active configuration is sufficient initially; managing a collection of profiles is later work. Bind the adjustment to the applicable capture configuration. A changed input invalidates automatic reuse until compatibility is established.
+
+Before Phase 2 SPL implementation, choose and document the actual reference procedure, available reference equipment, comparison geometry or microphone/calibrator coupling, applicable level/weighting, and before/after checks. A reference-meter comparison and an external microphone with an acoustic calibrator are distinct candidate workflows; neither is assumed to be available. If no suitable reference exists, continue digital observation and record SPL estimation as blocked. External-input scope is decided at this gate rather than universally postponed to Phase 5.
 
 Use descriptive states: **Uncalibrated**, **Reference-adjusted estimate**, and **Profile mismatch**. Do not display a certified-instrument badge or infer an accuracy class from entering an offset. NIOSH's published app specifications describe its own tested system [S5], not Android applications generally.
 
-Session records retain a snapshot of the profile and analysis configuration. Editing a profile later must not silently recalculate old results. Future reanalysis creates a separate derived result with its own provenance.
+Session records retain a snapshot of the active adjustment and analysis configuration. Editing the active configuration later must not silently recalculate old results. Future reanalysis creates a separate derived result with its own provenance.
 
 ## 4. Capture architecture and timing
 
@@ -133,102 +147,89 @@ These are starting parameters, not promised device capabilities. Partial final i
 
 ### Timestamp policy
 
-Use one consistent monotonic timebase for duration and segment timing. Prefer a boot-time basis aligned with Android capture timestamps when supported; record fallback timing and its quality. Store an independent UTC session anchor and the original timezone offset for external interpretation. Derive each frame's capture interval from sample positions and capture-time anchors, not from the moment Compose receives it.
+Use one consistent monotonic timebase for duration and capture timing. Prefer a boot-time basis aligned with Android capture timestamps when supported; record fallback timing and its quality. Store an independent UTC session anchor and the original timezone offset for external interpretation. Derive each frame's capture interval from sample positions and capture-time anchors, not from the moment Compose receives it.
 
-Store observed wall-clock adjustment events rather than rewriting earlier timestamps. Sequence numbers identify ordering; interval start/end and sample count identify coverage. Distinguish wall-clock elapsed time, valid captured duration, gaps, and paused time. After process death, close the recovered record as interrupted; do not imply that capture continued.
+Store observed wall-clock adjustments rather than rewriting earlier timestamps. Sequence numbers identify ordering; interval start/end and sample count identify coverage. Distinguish wall-clock elapsed time, valid captured duration, and detected gaps. Future pause/resume support must also distinguish paused time. After process death, close the recovered record as interrupted; do not imply that capture continued.
 
 ## 5. Session lifecycle and durability
 
-```mermaid
-stateDiagram-v2
-    [*] --> Ready
-    Ready --> Starting: Start
-    Starting --> Running: Input opened
-    Starting --> Ready: Start failed
-    Running --> Paused: Pause
-    Paused --> Running: Resume with new segment
-    Running --> Finalizing: Stop or interruption
-    Paused --> Finalizing: Stop
-    Finalizing --> Saved: Commit completed data
-    Saved --> [*]
-```
+The initial lifecycle is Ready → Starting → Running → Finalizing → Saved. A failed Start returns to Ready with a readiness reason. Exactly one controller owns active capture; duplicate commands must not create competing sessions.
 
-Pause/resume is an explicit Phase 3 addition; Phase 1 can implement Start/Stop first. The persisted model supports segments and gaps from the beginning. A saved session also has an outcome such as `completed`, `interrupted`, or `recovered`; an interruption is not disguised as successful completion.
+v0.1.0 uses Start/Stop and one fixed capture configuration per session. Stop ends the session. Route changes, permission loss, capture failures, or known input silencing end capture and preserve the available record with an explicit outcome. Pause/resume and multi-segment aggregation are later capabilities.
 
 | Trigger | Required behavior |
 | --- | --- |
 | Permission denied | Explain the readiness reason; create no running session |
 | Double Start | Keep one capture owner and one session |
 | Page change or recomposition | Preserve capture and session ID |
-| Rotation/recreation | Rebind to the existing service session |
-| Stop | End capture, flush complete records, finalize metadata, then expose export |
-| Pause/resume | Record a gap; resume as a new segment with timing and configuration |
-| Input route change | Record the event and stop/finalize in v0.1.0; later seamless continuation requires a new validated segment |
-| Permission loss, capture failure, or input silencing | Mark the condition and preserve available data; do not draw a fresh normal measurement |
-| Storage failure | Stop capture, keep the readable persisted prefix, report incomplete outcome |
-| Process death | Recover completed transactions and label interruption on next launch |
-| New session | Allocate a new ID and new aggregates; never reset an existing saved record |
+| Rotation/recreation | Rebind to the existing capture owner |
+| Stop | End capture, flush completed records, finalize metadata, then expose export |
+| Input route change | Stop/finalize and record the reason; a new measurement uses a new session |
+| Permission loss, capture failure, or known input silencing | Preserve available data and mark the interruption; do not display fresh normal measurements |
+| Storage failure | Stop capture, preserve the readable prefix where possible, report an incomplete outcome |
+| Process death | Recover the readable persisted record and label interruption on next launch |
+| Weighting or calibration change | Apply to a new session; preserve the prior configuration snapshot |
+| New session | Allocate a new ID and new aggregates; never reset a saved record |
 
-A proposed Room/SQLite repository can store session metadata, segments, measurement frames, and events with bounded batched transactions. Phase 0 must document the checkpoint interval, estimated rows/hour, and recoverable tail-loss bound. App-private storage is the authoritative session source; exported CSV is a portable copy.
+A saved session has an outcome such as `completed`, `interrupted`, or `recovered`. An interrupted record is not presented as successful continuous capture. Detectable lost data remain explicit; incomplete intervals do not become artificial silence.
 
-A user-started microphone foreground service is proposed for screen-off capture and app switching. Modern Android requires the appropriate microphone service declaration and permissions, and imposes while-in-use restrictions on starting it [S3]. Start from the visible app after permission approval; expose a persistent notification with Stop and session status. Exact declarations and behavior must be reviewed against the SDK selected in Phase 0.
+### Persistence decision
 
-Do not promise indefinite capture across system termination. Define and test preservation, notification behavior, return-to-session behavior, and screen-off timing. If a wake lock is necessary, scope it to active measurement and justify it using device results.
+Compare a simple append-based format with Room/SQLite against the same save, reopen, export, and interruption checks. Select the smallest implementation that satisfies those requirements after a small Phase 1 preservation/recovery experiment. Low row volume alone does not decide the storage model.
+
+For a file-based design, define record framing, buffered-write policy, partial-write recovery, metadata finalization, and consistency after interruption. For a database design, define transaction batching, recovery behavior, and schema scope. Document the observed preservation/loss bound of the selected implementation before release. Neither implementation is accepted solely because it appears simple.
+
+App-private storage is the authoritative session source. CSV is the portable representation; export may reuse a stable stored format if it meets the public contract. The UI never owns the only copy of the measurements.
+
+A user-started microphone foreground service is proposed for screen-off capture and app switching. Modern Android requires the appropriate microphone service declaration and permissions, and imposes while-in-use restrictions on starting it [S3]. Start from the visible app after permission approval; expose a persistent notification with Stop and session status. Review exact declarations against the selected SDK and test modern Android platform behavior explicitly.
+
+Do not promise indefinite capture across system termination. Test preservation, notification behavior, return-to-session behavior, and screen-off timing. If a wake lock is necessary, scope it to active measurement and justify it using device results.
 
 ## 6. CSV export and sharing contract
 
-Export is implemented in Phase 1 and evolves with a schema version. It must work without complete audio recordings or a network connection. CSV contains recorded measurement frames and derived quantities; it does not by itself preserve a sample-by-sample waveform for later FFT reanalysis.
+CSV export/share is mandatory in the first usable capture milestone and works without complete audio recordings or a network connection. CSV contains recorded measurement frames and derived quantities; it does not preserve a sample-by-sample waveform for later FFT reanalysis.
 
-### Proposed portable bundle
+### Initial packaging
 
-Offer **Share measurement CSV** for direct access to the principal table and **Export full session** for a ZIP containing:
+Deliver a directly shareable, self-contained measurement CSV first. Include essential session/input/configuration context in the table so a recipient can interpret the file without another attachment. Repeated contextual columns are acceptable at the initial data volume. Avoid a custom comment preamble that would prevent ordinary CSV readers from finding the header and rows.
 
-| File | Content |
-| --- | --- |
-| `session.csv` | One row with session identity, device/app version, time anchors, outcome, durations, profile snapshot, and summary conventions |
-| `segments.csv` | One row per capture segment with input identity, actual rate/format, source/processing state, timing quality, and analysis configuration |
-| `measurements.csv` | One row per measurement interval with raw digital energy/RMS/peak, derived levels, timing, and validity |
-| `events.csv` | Interruptions, pauses, route/configuration changes, notes, and their timing |
-| `README.txt` | Schema version, field definitions, units, null handling, and interpretation limits |
-| `SHA256SUMS` | Integrity checksums for the exported payload files |
+A richer bundle with separate session, segment, event, and measurement tables is later work, introduced when implemented capabilities or actual inspection needs justify it. Runtime bundle checksums are also later work; APK and archaeology artifact checksums remain part of release practice.
 
-Repeat essential context in the principal measurement table so a directly shared CSV remains interpretable: schema version, session and segment IDs, timing, sample rate, weighting, calibration profile/version, correction, and validity. The full bundle preserves richer provenance.
+### Provisional field layout
 
-### Measurement fields: proposed schema 1
+The following fields are candidates, not a frozen schema. Define units, references, null handling, and measurement validity early. Finalize schema 1 only after real sessions have been captured, exported, and inspected independently in the Phase 1 capture/export milestone.
 
-| Field | Unit/type | Rule |
+| Field group | Intended context or quantity | Rule |
 | --- | --- | --- |
-| `schema_version` | Integer | `1` for the initial schema |
-| `session_id`, `segment_id` | Opaque IDs | Join to session/segment tables; no device serial number |
-| `sequence` | Integer | Unique increasing measurement-frame index within the session |
-| `interval_start_utc` | ISO 8601 UTC | Capture-time estimate; timing quality is recorded |
-| `elapsed_start_ms`, `duration_ms` | Milliseconds | Monotonic elapsed start and actual captured interval duration |
-| `sample_rate_hz`, `sample_count` | Integers | Configured stream rate and samples represented |
-| `mean_square_fs`, `rms_fs`, `sample_peak_fs` | Full-scale normalized values | Pre-weighting digital measurements; finite values only |
-| `rms_dbfs`, `sample_peak_dbfs` | dBFS | Empty for exact zero; explicit signal state distinguishes it from missing data |
-| `frequency_weighting` | Enum | `NONE` in Phase 1; `A` or `Z` when implemented |
-| `calibration_profile_id`, `calibration_profile_version` | ID/integer | Empty when no compatible profile is applied |
-| `calibration_offset_db` | dB | Empty when uncalibrated; never silently assume a universal offset |
-| `interval_level_db_spl_est` | Estimated dB SPL | Empty until a compatible calibration and valid interval exist |
-| `cumulative_leq_db_spl_est` | Estimated dB SPL | Valid captured energy only, under the segment's fixed convention |
-| `clipped_sample_count` | Integer | Defined digital rail/threshold detector; does not detect every analogue distortion |
-| `signal_state` | Enum | `nonzero`, `digital_zero`, `missing`, or `invalid` |
-| `quality_flags` | Delimited codes | Known clipping, timing fallback, processing uncertainty, or other recorded quality states |
+| Schema/session identity | Schema version, session ID, sequence | Order and identify rows without exposing a device serial number |
+| Session context | Label, app version, device model/OS, outcome | Preserve enough context to interpret a directly shared file |
+| Timing | UTC anchor, interval UTC estimate, monotonic elapsed start, actual duration, timing quality | Distinguish capture coverage from presentation/update timing |
+| Input configuration | Input identity/type, source, sample rate, sample format, sample count, processing support/state | Record actual stream configuration and uncertainty |
+| Digital measurements | Mean-square, RMS, sample peak, corresponding dBFS values | Preserve useful precision; distinguish RMS from peak |
+| Analysis convention | Frequency weighting, interval definition, processing/analysis version | Keep fixed within an initial session |
+| Reference adjustment | Configuration ID/version, method/reference level, correction, creation time | Preserve a snapshot; empty when no applicable adjustment exists |
+| Derived values | Estimated interval SPL and equivalent level when available | Empty until reference and numerical prerequisites are met |
+| Validity | Digital-zero/missing/invalid state, clipping count, quality flags | Missing is never fabricated as silence |
+| Final coverage | Session elapsed/captured durations and interruption reason | Describe completeness of the finalized saved record |
 
-Keep analysis settings fixed during an active segment. For v0.1.0, changing weighting or calibration is allowed while stopped or paused and opens a new segment on resume. Cumulative Leq resets at a new segment; the session summary combines only segments with equivalent conventions and otherwise reports separate results. A current display toggle must not mutate recorded history.
+Do not collapse unavailable measurements into zero. Exact digital zero has zero energy and an explicit state; its logarithmic value is empty. Decide the precise field names, repeated metadata, and spreadsheet-safe text convention from the first real export fixture. Store richer reference/setup details locally where needed even if they are not convenient repeated columns.
+
+Keep weighting and reference adjustment fixed while a session runs. Stop before changing configuration, then start a new session. The displayed and exported aggregates use that session's recorded convention. Multi-segment configuration changes and aggregation are deferred.
 
 ### Serialization rules
 
 - UTF-8, comma delimiter, decimal point, header row, and consistent line endings. Escape commas, quotes, and newlines in text fields.
 - Empty fields represent unavailable values; zero remains numeric zero. Do not serialize `NaN` or infinity as ordinary measurements.
-- Numeric precision preserves analysis usefulness independently of displayed rounding.
-- Export arbitrary user text safely for spreadsheet opening; document any reversible text escaping convention.
-- All tables share a schema version. Breaking field meanings or units require a new version and compatibility documentation.
+- Preserve numeric precision independently of displayed rounding.
+- Export arbitrary user text safely for spreadsheet opening; document any reversible escaping convention.
+- Breaking field meanings or units require a new schema version and compatibility documentation after schema 1 is finalized.
 - Finalize the selected session snapshot before export. Repeated exports of an unchanged record should produce equivalent table content.
 - Use Android content URIs and temporary read permissions for sharing [S4]. Support explicit save through the system document picker; do not request broad filesystem access for convenience.
 - Cancelled sharing or saving leaves the original session intact. Export failure can be retried.
 
-Acceptance requires opening exports in Excel and an independent CSV reader, checking timestamps and quoting, verifying row counts and joins, and recalculating representative aggregates outside the app. Spreadsheet locale behavior should be tested on the user's Windows environment; the canonical format remains locale independent.
+Acceptance requires opening exports in Excel and an independent CSV reader, checking timestamps, units, quoting, missing/zero states, and row counts, and recalculating representative aggregates outside the app. Test spreadsheet locale behavior on the user's Windows environment; the canonical format remains locale independent.
+
+A zero-frame session cannot satisfy measurement-export acceptance. Handle failed starts and empty records explicitly instead of inventing a normal measurement row.
 
 ## 7. Interaction and screen layout
 
@@ -244,73 +245,85 @@ The initial analyzer has two pages: **Meter** and **History**. Add **Spectrum**,
 
 Use stable dimensions, consistent typography, sufficient text size, accessible descriptions, and readable dark/light themes. Permission explanations and capture errors use predictable regions so changing status does not repeatedly shift the graph. Do not draw a measured value before the first valid interval.
 
-History supports live-follow mode, a cursor, and inspection of a saved session. When a user navigates backward during capture, leave follow mode and show a clear **Return to live** action. Gaps are visible discontinuities. A stale view must not keep animating as though new audio arrived.
+The initial History page provides live-follow and inspection of saved data. A cursor and interactive time-range navigation can follow once basic capture/export works. When interactive backward navigation is implemented, leave follow mode and show a clear **Return to live** action. Gaps are visible discontinuities. A stale view must not keep animating as though new audio arrived.
 
-Horizontal gestures need an explicit ownership rule: dragging inside an interactive graph navigates its time range; swiping in a dedicated page-navigation area changes analyzer pages. Visible selectors provide a reliable alternative. Validate this on the J8 before adding more pages. Preserve zoom/range/cursor state per page and avoid automatic scrolling unrelated to an explicit follow setting.
+Keep swipe paging and visible selectors in the initial two-page interface. Defer interactive graph pan/zoom until basic history is useful. When those gestures are added, define ownership explicitly: dragging inside the interactive graph navigates its time range; a dedicated navigation area or visible selectors changes analyzer pages. Validate this on the J8 before adding more pages. Preserve zoom/range/cursor state per page and avoid automatic scrolling unrelated to an explicit follow setting.
 
 The design should work on a small display with increased system font size. A graph export image is a later convenience and cannot replace CSV or calibration context.
 
 ## 8. Phased delivery and acceptance gates
 
-Each phase should leave a runnable, evidence-backed state once application code begins. Subphases may be used to keep reviews and device testing manageable. Completion requires the listed gate, not merely an implemented screen.
+Use bounded increments with runnable results once application code begins. Before each substantial phase, apply the two-review gate in Section 14. A phase is complete when its acceptance evidence exists, not when a screen or document is present. Preserve proportionate evidence and published history.
 
-### Phase 0 — Foundation and contracts
+### Phase 0 — Foundation and capture probe
 
-Deliver an Android project, branded launcher/splash, Meter/History shell, toolchain records, Gradle wrapper, build/lint/test CI, session and readiness models, export schema, and documented measurement conventions. Reconcile branding references with actual assets and convert the accepted directions into adaptive icon and platform splash resources.
+**0A: Minimum runnable foundation.** Retain the existing Android bootstrap. Confirm application ID, supported API range, compatible toolchain, Gradle wrapper, original-code licensing declaration, a simple branded shell, and microphone readiness. Build instructions and narrow developer commands must make the probe reproducible. Add essential CI alongside this work; completing all future contracts or screen polish is not a prerequisite for reading samples.
 
-Proposed initial compatibility is minSdk 26, retaining J8 Android 10 support. Select compile/target SDK, AGP, Kotlin, Compose, Gradle, and JDK versions as a tested compatible set during bootstrap; do not copy an older application's versions without checking compatibility. Confirm the application ID and declare original code's intended `AGPL-3.0-or-later` licensing metadata before the first app release.
+Proposed initial compatibility is minSdk 26, retaining J8 Android 10 support. Select compile/target SDK, AGP, Kotlin, Compose, Gradle, and JDK versions as a tested compatible set. Declare original code's intended `AGPL-3.0-or-later` metadata before release. Adapt accepted branding to Android resources without redesigning the approved identity.
 
-Gate: clean CI build/lint/tests; a branded debug APK opens on the J8; no microphone starts on launch; contracts and build instructions are committed. The shell does not imply unavailable analysis capabilities.
+**0B: J8 PCM capture/timing probe.** Implement a small diagnostic path testing available source/rate combinations, actual routed input, unprocessed support/observable processing, sample counts, timing availability, digital levels, and interruption behavior. It may use temporary diagnostic output before the public CSV layout is finalized. Start capture explicitly; launching the app never starts the microphone automatically.
 
-### Phase 1 — Capture, durability, and export
+Time-box the first probe investigation to **1–2 focused development days**, counted as active work rather than a calendar promise. Deliver findings within that budget: proceed with the tested path, investigate a fallback/external input, or document a blocker. A time-box expiry is not a passed measurement gate.
 
-Suggested increments: **1A** readiness and PCM probe; **1B** Start/Stop, timing, digital measurements, and service ownership; **1C** durable sessions, recovery, CSV/save/share.
+Gate: a runnable diagnostic APK, actual J8 capture data/configuration, numerical/timing observations, identified limitations, and a decision record. Report uncertainty rather than treating advertised capabilities as acoustic validation. Complete remaining foundation work around these findings; keep the export field layout provisional.
 
-Deliver actual input diagnostics, current RMS/sample peak in dBFS, elapsed/captured durations, stored measurement intervals, session list/detail, interruption outcomes, and schema-1 export. Provide a visible uncalibrated state. Complete export before advanced SPL or chart work.
+### Phase 1 — Usable session, preservation, and export
 
-Gate: capture a labeled session on the J8, stop, reopen, export, and independently inspect it. Test permission denial, repeated Start/Stop, rotation, page changes, process death, screen-off capture, and storage failure. Record the tested durability loss bound and actual capture configuration. No fake SPL is used to fill the meter.
+Deliver Start/Stop with a fixed configuration, current RMS/sample peak in dBFS, elapsed/captured durations, basic level history, saved session list/detail, reopen, CSV export/share, and interruption outcomes. Compare persistence options in a small recovery experiment and select the simplest passing design. Keep one capture owner independent of page changes.
 
-### Phase 2 — Meter, calibration, and weighted analysis
+Gate: Dante captures a labeled event on the J8, inspects its history, stops and reopens it, exports/shares a CSV, and interprets it externally. Independently inspect the captured/exported data and finalize schema 1 at this milestone.
 
-Suggested increments: **2A** numerical pipeline and A/Z filters; **2B** calibration profile workflow; **2C** current/minimum/maximum/Leq presentation and matching export fields. Fast/Slow response is included only with documented numerical behavior and tests; otherwise use interval-level wording.
+Test permission denial, repeated Start/Stop, rotation, page changes, input change, process death, and storage failure. Screen-off behavior is tested wherever the service path is implemented; broader Android claims require modern platform checks. Document the chosen preservation bound and actual input configuration. Do not populate the meter with invented SPL.
 
-Gate: synthetic signals establish RMS/peak behavior, energy aggregation, filter response, partial-interval treatment, and calibration arithmetic. An input/profile mismatch is visible and disables inappropriate calibrated values. Exports preserve the profile snapshot. Any physical accuracy claim requires separate reference-instrument evidence.
+An early bounded FFT experiment may run after basic capture if it helps the selected task. It has a separate usefulness/numerical/performance decision; it must not delay the mandatory usable-session export milestone.
 
-### Phase 3 — History, paging, and first release
+### Phase 2 — Meter and chosen reference adjustment
 
-Deliver live and saved histories, Meter/History paging, persistent controls, cursor/range navigation, Return to live, explicit pause/resume segments, labels/notes, and usable export actions. Complete lifecycle and accessibility polish rather than adding more analysis types.
+Before estimated SPL implementation, decide the actual reference procedure, equipment/input scope, applicable conditions, and evidence required. If equipment or a suitable reference is unavailable, record that blocker and continue digital observation. Decide external-input scope here when it is needed, rather than deferring it automatically.
 
-Gate: swipe repeatedly during capture without changing the session or losing stored intervals; inspect older data while new data is captured; verify graph values against stored/exported frames; observe pauses and input interruptions as gaps; reopen and share a saved session.
+Deliver validated A/Z analysis, one active reference-adjustment configuration, its immutable per-session snapshot, defined current/minimum/maximum/Leq, and matching export values. Keep settings fixed during capture. Fast/Slow labels require documented numerical behavior and tests; otherwise use interval-level wording.
 
-Proposed release gate: a 60-minute J8 soak run, including screen-off and return-to-app checks, with bounded memory, measured storage growth, usable stop/export, and no unexplained gaps. Record temperature/battery observations and timing behavior. This is a validation target, not a pre-existing performance result.
+Gate: deterministic synthetic signals establish RMS/peak, energy aggregation, filter response, partial-interval behavior, and reference-adjustment arithmetic. Document and perform the selected reference procedure before presenting reference-adjusted SPL on a device. Input/configuration mismatches disable inappropriate calibrated values. Physical accuracy claims require separate evidence.
 
-After these gates, release **v0.1.0** with APK, checksums, release notes, original device evidence, and the precise measurement limitations observed. An internal Phase 1/2 APK is a testing milestone rather than the complete public baseline.
+Record the outcome for v0.1.0 sound-meter scope after this gate. A digital-only result remains a clearly labeled test milestone until the first-release scope decision is recorded.
 
-### Phase 4 — FFT spectrum
+### Phase 3 — First-release polish and validation
 
-Deliver a live spectrum, frequency cursor, peak hold, explicit FFT length/window/overlap, amplitude reference, averaging, and spectrum export. Distinguish a spectrum snapshot from a complete time-frequency recording. Record configuration alongside each exported result.
+Deliver stable Meter/History paging and controls, usable saved-history inspection, labels/notes, accessibility, error states, notification/service behavior, return-to-session behavior, and convenient export. Add cursor/range interaction only after basic history is useful and its gesture ownership is validated. Pause/resume and multi-segment sessions are deferred.
 
-Gate: known digital tones validate bin positions, window/amplitude normalization, leakage, frequency resolution, and peak hold. At sample rate `Fs` and FFT length `N`, bin spacing is `Fs/N`; do not present bin spacing as the full ability to resolve nearby tones. Profile J8 CPU/memory cost before selecting defaults. Physical tones provide supplementary device evidence, not the sole numerical test.
+Gate: swipe repeatedly during capture without resetting the session or losing recorded intervals; verify history against stored/exported values; reopen and share saved data; preserve configuration and outcome on interruptions. Confirm the intended first acoustic task is useful.
 
-### Phase 5 — Extended analysis
+Define modern Android platform cases explicitly: permission denial/revocation, visible-app service start, attempted disallowed background start, app switching, notification Stop, and return to the active session. Use emulator checks for platform behavior and separately authorized modern hardware for physical capture/service evidence before broad device-support claims. J8 evidence alone is not modern-platform coverage.
 
-Split into independent increments: spectrogram, octave bands, optional complete audio recording/replay, session comparison, and plot-image export. Full audio introduces storage budgeting, replay metadata, privacy controls, and explicit retention/deletion behavior. Saved waveform navigation and later FFT reanalysis depend on waveform availability; measurement CSV alone is insufficient.
+Before release, perform a **60-minute J8 soak** including screen-off and return checks, bounded memory, observed storage growth, usable stop/export, and no unexplained gaps. Record timing and battery/temperature observations. This release check does not block an earlier probe/test APK.
 
-Gate each capability separately. Review vibration and external-microphone workflows as new scope decisions rather than expanding this phase without bounds.
+After the applicable gates and the recorded sound-meter scope decision, release **v0.1.0** with APK, checksums, concise release notes, original device evidence, and observed measurement limitations. Basic FFT is included only if its own usefulness and validation decision supports it.
+
+### Phase 4 — Full FFT spectrum
+
+Deliver the full live spectrum workflow: frequency cursor, peak hold, explicit FFT length/window/overlap, amplitude reference, averaging, and spectrum export. An earlier basic FFT experiment does not mark this phase complete. Distinguish a spectrum snapshot from a complete time-frequency recording and export the applicable configuration.
+
+Gate: known digital tones validate bin positions, amplitude/window normalization, leakage, resolution, and peak hold. At sample rate `Fs` and FFT length `N`, bin spacing is `Fs/N`; it is not the full ability to resolve nearby tones. Profile J8 CPU/memory before choosing defaults. Physical tones supplement deterministic numerical checks.
+
+### Phase 5 — Extensions
+
+Gate independently: spectrogram, octave bands, optional complete audio recording/replay, session comparison, plot-image export, pause/resume with multi-segment aggregation, profile collections, and richer export bundles. Implement only accepted scope, not the entire candidate list automatically.
+
+Full audio needs storage budgeting, replay metadata, opt-in recording, and retention/deletion behavior. Saved waveform navigation and later FFT reanalysis require waveform availability; measurement CSV alone is insufficient. Vibration remains a separate scope review.
 
 ## 9. Validation strategy
 
 | Layer | Meaningful checks | Evidence |
 | --- | --- | --- |
 | Pure numerical tests | Zero, DC input behavior, sine RMS, amplitude changes, mixed energies, A/Z response, calibration, partial frames | Deterministic fixtures and documented tolerances |
-| Session tests | Lifecycle transitions, idempotent commands, segments/gaps, interrupted recovery, profile snapshots | State and persistence tests |
-| Export tests | Quoting/nulls, precision, field/version contracts, row counts, aggregate reconstruction | Golden fixture plus independent parser/recalculation |
+| Session tests | Start/Stop transitions, idempotent commands, interruptions, recovery, immutable configuration snapshots | State and persistence tests |
+| Export tests | Quoting/nulls, precision, field/version contracts, row counts, aggregate reconstruction | Real captured/export fixture, independent parser/recalculation, then versioned contract fixture |
 | UI/instrumentation | Paging continuity, rotation, controls, long text/font size, saved/live distinction | Targeted tests and original screenshots |
 | J8 hardware checks | Actual input/source/rate, screen-off behavior, interruptions, clipping indicators, sustained capture | Device log, metadata, screenshots, test checklist |
 | Physical comparison | Comparable measurement geometry and reference/calibration context | Explicitly recorded setup; claim only what the evidence supports |
 | CI | Build, lint, numerical/session/export tests; instrumentation only where configured | Workflow status tied to exact commit |
 
-The Samsung Galaxy J8 (SM-J810M, Android 10, API 29, 32-bit ARM) is the initial lab device. Moto G41 and Redmi 10A remain unchanged under the standing lab policy. Later Android-version coverage requires separately authorized device use or suitable emulator checks; J8 evidence alone cannot establish all modern background-service behavior.
+The Samsung Galaxy J8 (SM-J810M, Android 10, API 29, 32-bit ARM) is the initial lab device. Moto G41 and Redmi 10A remain unchanged under the standing lab policy. Add an explicit modern Android platform test matrix during foundation/session work, using emulator checks for relevant lifecycle rules. Physical modern-device capture/service evidence requires separately authorized hardware use before broad support claims. Keep the existing stable phones unchanged; emulation does not validate a vendor microphone path.
 
 Reconcile stored sample counts, interval durations, and events before treating a displayed frame count as proof of capture continuity. Flag suspicious zeros against input state and timing rather than drawing conclusions from zero alone.
 
@@ -320,22 +333,22 @@ Freeze original screenshots at their original dimensions. Label synthetic, emula
 
 | Risk | Relative uncertainty | Control or decision gate |
 | --- | --- | --- |
-| Vendor microphone processing or unknown frequency response | High | Probe actual J8 path; export uncertainty; separate digital correctness from acoustic accuracy |
+| Vendor microphone processing or unknown frequency response | High | Move the actual J8 probe into Phase 0; export uncertainty; distinguish digital, relative, and SPL evidence |
 | Lifecycle/background restrictions | High | Single service owner; version-aware declarations; screen-off and return tests |
-| Calibration reused for a changed input | High impact | Configuration-bound profiles and immutable session snapshots |
-| Lost data during UI load, storage failure, or process death | High impact | Bounded pipeline, persisted checkpoints, explicit gaps/outcomes, recovery tests |
+| Calibration reused for a changed input | High impact | Configuration-bound adjustment and immutable session snapshots |
+| Lost data during UI load, storage failure, or process death | High impact | Bounded pipeline, tested preservation policy, explicit interruptions/outcomes, recovery tests |
 | Gesture conflict between paging and graph navigation | Medium | Defined gesture areas, visible page selectors, J8 usability gate |
 | Battery, CPU, heat, and growing history | Medium initially; higher with FFT/audio | Bounded memory, indexed/paged storage, display decimation, soak profiling |
-| CSV looks complete but lacks interpretation context | High impact | Versioned schema, direct-file context, full-session bundle, external reconstruction |
+| CSV looks complete but lacks interpretation context | High impact | Provisional fields until real data; self-contained CSV; independent reconstruction; richer bundle later |
 | Scope growth into vibration, compliance, or general scaffolding | High schedule risk | First-release boundary and separate scope review |
 
-Effort is best assessed by acceptance-gated increments rather than a calendar promise. Phase 0 is smaller than capture/lifecycle work; Phases 1 and 2 contain the largest first-release uncertainty. Phase 3 depends on their stability. FFT and spectrogram substantially increase analysis and performance validation. After the Phase 1 probe, record actual implementation/test effort and revise the remaining estimate.
+Use acceptance gates with bounded investigation budgets. The first Phase 0B probe gets 1–2 focused development days and must produce findings or a documented blocker. Before each following increment, record its investigation/implementation budget, deliverable, and review point; revise remaining estimates using observed effort. A budget does not justify accepting a failed gate. Phases 1 and 2 retain the largest first-release uncertainty; full FFT and spectrogram add separate numerical and performance work.
 
-The current critical path is: **capture/timing probe → durable session and export → validated meter/calibration → navigable history → release validation**. If the J8's input path is unsuitable for useful SPL estimation, keep the digital analyzer useful and investigate an external input before making stronger measurement claims.
+The revised critical path is: **minimum runnable foundation → capture/timing probe → usable session/history/export → chosen reference workflow and validated meter → release validation**. Decide the reference path after probe findings and before estimated SPL implementation. If the J8's input path is unsuitable for useful SPL estimation, keep the digital analyzer useful and investigate an external input before making stronger measurement claims.
 
 ## 11. Repository workflow, archaeology, and release policy
 
-Create `dev` from the inspected baseline and use `feature/phase-0-planning` for this document. Integrate the completed planning change into `dev` with a merge commit, then promote the documentation baseline into `main` after its documentation checks pass. This completes the planning milestone, not the implementation gate for Phase 0. Subsequent implementation phases use descriptive `feature/phase-*` branches. Promote validated development to `main` when its milestone is ready; never squash published phase history. Hotfixes follow the established main-first exception and are propagated to active branches.
+The original planning baseline established `dev` and passed through `feature/phase-0-planning` → `dev` → `main` with merge commits. Revision 2 uses `feature/phase-0-planning-revision-2` from the current documentation baseline and follows the same integration flow after documentation checks. This completes a planning milestone, not the application gate for Phase 0. Keep the active foundation branch's implementation work separate and incorporate the new plan when that branch is next integrated or continued. Subsequent implementation phases use descriptive `feature/phase-*` branches. Promote validated development to `main` when its milestone is ready; never squash published phase history. Hotfixes follow the established main-first exception and are propagated to active branches.
 
 Suggested product-specific paths:
 
@@ -357,16 +370,18 @@ CI performs product build/lint/tests. Device installation runs locally against t
 
 | Order | Work item | Completion evidence |
 | --- | --- | --- |
-| 1 | Confirm application ID, supported API range, compatible toolchain, original-code license declaration | Recorded bootstrap decisions |
-| 2 | Reconcile branding inventory and implement Android icon/splash resources | Resources plus J8 launch screenshot |
-| 3 | Freeze measurement terminology, timebase, segment rules, and schema-1 export contract | Reviewed specifications and small sample fixtures |
-| 4 | Bootstrap Kotlin/Compose project, Gradle wrapper, and narrow developer commands | Reproducible local build |
-| 5 | Add CI build/lint/tests and pure numerical test entry points | Passing workflow on exact commit |
-| 6 | Implement readiness/session shell and Meter/History layout | No automatic microphone capture; stable controls |
-| 7 | Create J8 probe checklist for Phase 1 | Source/rate/route/processing/timing/storage scenarios |
-| 8 | Freeze Phase 0 evidence and record remaining decisions | Phase gate checklist and archaeology record |
+| 1 | Retain/review the existing bootstrap; confirm application ID, API range, compatible toolchain, licensing, and minimum developer commands | Reproducible runnable shell and recorded essentials |
+| 2 | Add microphone readiness and an explicit-start diagnostic capture path | Permission denial and no automatic capture |
+| 3 | Execute the bounded J8 source/rate/route/processing/timing probe | Captured diagnostic data and actual configuration |
+| 4 | Record proceed/fallback/blocker outcome and the next calibration/reference decision | Short findings/decision record |
+| 5 | Complete essential CI and branding-resource reconciliation alongside the probe | Passing configured checks and launch evidence |
+| 6 | Define measurement/timebase/validity/provenance meanings; keep export field layout provisional | Draft contract grounded in diagnostic data |
+| 7 | Define the modern Android lifecycle matrix and Phase 1 persistence/export experiment | Concrete test cases and next acceptance scenario |
+| 8 | Preserve proportionate Phase 0 evidence and review the next bounded increment | Checklist, commit/APK identity, findings, remaining decisions |
 
-Open decisions to resolve during implementation: exact application ID; compatible toolchain versions; persistence batching/loss bound; J8 capture defaults; timing fallback behavior; graph library versus Compose drawing; supported calibration reference workflow; and modern-Android validation environment. These should be resolved with evidence at the relevant gate, not left as hidden assumptions.
+Immediate decision dependencies: J8 capture defaults and timing fallback depend on the probe; storage design and preservation bound depend on the Phase 1 recovery experiment; schema 1 depends on real export inspection; reference equipment/procedure and external-input scope must be settled before estimated SPL implementation. Application ID/toolchain decisions already made during bootstrap should be retained or changed with recorded reasons, not reopened automatically.
+
+Choose the first acoustic task and setting before the Phase 1 user acceptance test. Modern Android platform cases need an explicit environment and coverage record; physical modern hardware requires separately authorized use. Graph pan/zoom, multiple segments, profile collections, and rich export packaging remain deferred until justified.
 
 ## 13. Sources and applicability
 
@@ -380,6 +395,19 @@ Technical references were checked on 2026-10-08. They support platform constrain
 - **[S6] Kardous and Shaw (2016) — Evaluation of smartphone sound measurement applications using external microphones, a follow-up study:** <https://stacks.cdc.gov/view/cdc/203482>. External calibrated-microphone evaluation; not a Cuicatl accuracy validation.
 - **[S7] CDC/NIOSH — Sound Level Meter application guide:** <https://www.cdc.gov/niosh/media/pdfs/NIOSH-Sound-Level-Meter-Application-app-English.pdf>. Measurement terminology, calibration workflow, and session information as functional references.
 
-## 14. Planning revision policy
+## 14. Planning review and revision policy
 
-Update this plan when evidence changes a decision, a phase is split, or scope is accepted. Preserve dated rationale and distinguish completed work from future proposals. Before each phase starts, turn its acceptance gate into a concrete implementation checklist; after completion, link the exact evidence and tagged state. This report establishes the initial plan and does not authorize claims of certified accuracy or imply that later candidate capabilities are already committed.
+Before each substantial implementation phase:
+
+1. Author review checks scope, assumptions, dependencies, numerical/data integrity, and acceptance criteria.
+2. Obtain an independent review that challenges those choices.
+3. Record accepted findings, justified disagreements, and decisions that remain dependent on evidence.
+4. Begin the bounded phase once the next increment's blockers and acceptance gate are clear.
+
+Two reviews should produce a decision rather than indefinite rewrites until everyone agrees. Planning can authorize an experiment while later implementation choices remain provisional. A new material assumption or scope change reopens the relevant decision; it does not automatically restart the entire roadmap.
+
+For Revision 2, the supplied independent review and the author reassessment are reconciled in the linked disposition record. This is a planning review, not independent verification of future code or hardware results. Its next deliverable is the runnable capture probe and findings.
+
+Update the plan when evidence changes a decision, a phase is split, or scope is accepted. Preserve Revision 1 in Git history and dated rationale for later changes. Keep completed work distinct from intended work. Retain feature → dev → main, merge commits, phase snapshots, original-dimension device evidence, and APK/artifact checksums, with record detail proportional to milestone value.
+
+Before each phase starts, convert its acceptance gate into a short implementation checklist. After completion, link the exact evidence and tagged state. This document does not authorize certified-accuracy claims or imply that later candidates are committed.
