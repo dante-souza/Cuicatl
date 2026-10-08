@@ -32,6 +32,8 @@ Neither changes the Phase 0 capture-path decision.
 
 ## Final artifact bookkeeping
 
-The candidate APK SHA256 remains to be recorded before the Phase 0 archaeology/tag is considered fully frozen.
+Candidate debug APK SHA256 was verified from the local J8-tested artifact. Fingerprint: `8CAC5DB5…A913D87B`.
+
+Phase 0 archaeology is complete.
 
 No calibrated SPL accuracy claim is made by Phase 0.
