@@ -112,6 +112,64 @@ $javaVersion = Get-JavaVersionLine (Join-Path $selectedHome 'bin\java.exe')
 Write-Host "Cuicatl build JDK: $selectedHome"
 Write-Host "Cuicatl Java: $javaVersion"
 
+$sdkCandidates = New-Object System.Collections.Generic.List[string]
+
+if ($env:ANDROID_HOME) {
+    $sdkCandidates.Add($env:ANDROID_HOME.Trim('"'))
+}
+
+if ($env:ANDROID_SDK_ROOT) {
+    $sdkCandidates.Add($env:ANDROID_SDK_ROOT.Trim('"'))
+}
+
+if ($env:LOCALAPPDATA) {
+    $sdkCandidates.Add((Join-Path $env:LOCALAPPDATA 'Android\Sdk'))
+}
+
+$sdkCandidates.Add((Join-Path $env:USERPROFILE 'AppData\Local\Android\Sdk'))
+
+$selectedSdk = $null
+foreach ($candidateSdk in $sdkCandidates | Select-Object -Unique) {
+    if (-not (Test-Path $candidateSdk)) {
+        continue
+    }
+
+    $platformPath = Join-Path $candidateSdk 'platforms\android-36'
+    if (Test-Path $platformPath) {
+        $selectedSdk = $candidateSdk
+        break
+    }
+}
+
+if (-not $selectedSdk) {
+    $existingSdks = @(
+        $sdkCandidates |
+            Select-Object -Unique |
+            Where-Object { Test-Path $_ }
+    )
+
+    if ($existingSdks.Count -gt 0) {
+        $details = 'Android SDK directories were found, but none contains platforms\android-36:' +
+            [Environment]::NewLine + ' - ' +
+            ($existingSdks -join ([Environment]::NewLine + ' - '))
+    } else {
+        $details = 'No Android SDK directory was found in ANDROID_HOME, ANDROID_SDK_ROOT, or the standard Windows user location.'
+    }
+
+    throw @"
+Cuicatl requires Android SDK Platform 36 for compileSdk 36.
+$details
+
+Install Android SDK Platform 36 in Android Studio SDK Manager, or expose an existing SDK through ANDROID_HOME / ANDROID_SDK_ROOT.
+"@
+}
+
+$env:ANDROID_HOME = $selectedSdk
+$env:ANDROID_SDK_ROOT = $selectedSdk
+
+Write-Host "Cuicatl Android SDK: $selectedSdk"
+Write-Host "Cuicatl Android platform: $(Join-Path $selectedSdk 'platforms\android-36')"
+
 $wrapper = Join-Path (Split-Path -Parent $PSScriptRoot) 'gradlew.bat'
 & $wrapper @GradleArgs
 $exitCode = $LASTEXITCODE
