@@ -4,9 +4,17 @@ package io.github.dante_souza.cuicatl.domain
 data class MeasurementSession(
     val id: String,
     val state: SessionState,
+    val label: String = "",
     val outcome: SessionOutcome? = null,
+    val startedAtUtcEpochMillis: Long = 0L,
     val elapsedMillis: Long = 0L,
     val capturedMillis: Long = 0L,
+    val source: String = "",
+    val sampleRateHz: Int = 0,
+    val inputIdentity: String = "",
+    val processingState: String = "",
+    val frameCount: Long = 0L,
+    val interruptionReason: String? = null,
 )
 
 enum class SessionState {

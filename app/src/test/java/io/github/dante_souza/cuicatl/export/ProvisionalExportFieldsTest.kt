@@ -15,6 +15,7 @@ class ProvisionalExportFieldsTest {
         assertTrue(columns.contains("timing_quality"))
         assertTrue(columns.contains("audio_source"))
         assertTrue(columns.contains("signal_state"))
+        assertTrue(columns.contains("clipped_sample_count"))
         assertTrue(columns.contains("quality_flags"))
         assertFalse(columns.contains("segment_id"))
     }

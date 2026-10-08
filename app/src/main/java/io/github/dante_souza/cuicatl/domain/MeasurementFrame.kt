@@ -14,6 +14,9 @@ data class MeasurementFrame(
     val rmsDbfs: Double?,
     val samplePeakDbfs: Double?,
     val signalState: SignalState,
+    val timingQuality: TimingQuality = TimingQuality.MONOTONIC_FALLBACK,
+    val clippedSampleCount: Int = 0,
+    val qualityFlags: Set<QualityFlag> = emptySet(),
 )
 
 enum class SignalState {
@@ -21,4 +24,13 @@ enum class SignalState {
     DIGITAL_ZERO,
     MISSING,
     INVALID,
+}
+
+enum class TimingQuality {
+    AUDIO_TIMESTAMP_MONOTONIC,
+    MONOTONIC_FALLBACK,
+}
+
+enum class QualityFlag {
+    CLIPPED,
 }
