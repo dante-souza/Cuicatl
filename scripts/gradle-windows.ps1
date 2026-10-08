@@ -6,12 +6,48 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Get-JavaMajor([string] $JavaExe) {
+function Get-JavaVersionLine([string] $JavaExe) {
     if (-not (Test-Path $JavaExe)) {
         return $null
     }
 
-    $firstLine = (& $JavaExe -version 2>&1 | Select-Object -First 1).ToString()
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $JavaExe
+    $startInfo.Arguments = '-version'
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.RedirectStandardOutput = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+
+    try {
+        [void] $process.Start()
+        $stderr = $process.StandardError.ReadToEnd()
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $process.WaitForExit()
+    } finally {
+        $process.Dispose()
+    }
+
+    $combined = (($stderr + [Environment]::NewLine + $stdout) -split "\r?\n") |
+        Where-Object { $_ -and $_.Trim() } |
+        Select-Object -First 1
+
+    if ($combined) {
+        return $combined.Trim()
+    }
+
+    return $null
+}
+
+function Get-JavaMajor([string] $JavaExe) {
+    $firstLine = Get-JavaVersionLine $JavaExe
+    if (-not $firstLine) {
+        return $null
+    }
+
     if ($firstLine -match 'version "(?<major>\d+)') {
         return [int]$Matches.major
     }
@@ -55,7 +91,7 @@ foreach ($candidateHome in $candidateHomes | Select-Object -Unique) {
 if (-not $selectedHome) {
     $pathJava = Get-Command java.exe -ErrorAction SilentlyContinue
     $pathVersion = if ($pathJava) {
-        (& $pathJava.Source -version 2>&1 | Select-Object -First 1).ToString()
+        Get-JavaVersionLine $pathJava.Source
     } else {
         'java.exe not found in PATH'
     }
@@ -72,7 +108,7 @@ Install or expose a JDK 17 (Temurin recommended), or set JAVA_HOME to an existin
 $env:JAVA_HOME = $selectedHome
 $env:Path = "$(Join-Path $selectedHome 'bin');$env:Path"
 
-$javaVersion = (& (Join-Path $selectedHome 'bin\java.exe') -version 2>&1 | Select-Object -First 1).ToString()
+$javaVersion = Get-JavaVersionLine (Join-Path $selectedHome 'bin\java.exe')
 Write-Host "Cuicatl build JDK: $selectedHome"
 Write-Host "Cuicatl Java: $javaVersion"
 
