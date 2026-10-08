@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Cuicatl</string>
+    <string name="sound_analysis_platform">Sound Analysis Platform</string>
 </resources>
