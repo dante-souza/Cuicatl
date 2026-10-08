@@ -4,29 +4,34 @@ Planning Revision 2 splits this milestone into **0A minimum runnable foundation*
 
 ## Automated gate
 
-Required on the exact candidate commit:
+The Phase 0 candidate passed the configured GitHub Actions software gate:
 
 - unit tests;
 - Android lint;
 - debug APK assembly;
 - Gradle wrapper validation.
 
-GitHub Actions is the CI authority for the software baseline.
-
 ## Physical J8 gate
 
-Use `j8-checklist.md`. Device installation/open actions must pass `scripts/preflight-j8.ps1`.
+Physical validation was performed on the Samsung Galaxy J8 / SM-J810M / Android 10 (API 29).
 
-The physical gate now includes a user-started diagnostic capture. Merely proving that the shell launches is a 0A checkpoint, not Phase 0 completion.
+The tested capture path is documented in `j8-findings-2026-10-08.md`.
 
-Evidence must identify the actual source/rate/route/timing behavior and keep dBFS observations distinct from SPL claims.
+Result: **PROCEED**
 
-## Completion decision
+The probe established a stable 48 kHz `VOICE_RECOGNITION` PCM path, coherent sample/timestamp progression, bounded 10-second completion, and explicit manual stop.
 
-Freeze a short findings record with one of:
+The physical evidence also exposed repeated full-scale sample peaks at 0.0 dBFS under loud transients. Phase 1 therefore treats clipping as explicit measurement-quality state.
 
-- **Proceed** — tested J8 path is sufficient for Phase 1 digital session work.
-- **Fallback investigation** — a different source/input path needs a bounded follow-up.
-- **Blocker** — reliable capture cannot proceed without resolving a documented issue.
+## Non-blocking unexercised checks
 
-No Phase 0 tag should be created before configured CI checks and the physical probe gate are complete.
+- permission denial after permission had already been granted;
+- Meter ↔ History switching during an active probe.
+
+Neither changes the Phase 0 capture-path decision.
+
+## Final artifact bookkeeping
+
+The candidate APK SHA256 remains to be recorded before the Phase 0 archaeology/tag is considered fully frozen.
+
+No calibrated SPL accuracy claim is made by Phase 0.
