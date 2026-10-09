@@ -54,6 +54,7 @@ class SessionRepository(context: Context) {
             setProperty(KEY_LABEL, session.label)
             setProperty(KEY_STATE, SessionState.RUNNING.name)
             setProperty(KEY_STARTED_UTC_MS, session.startedAtUtcEpochMillis.toString())
+            setProperty(KEY_TIMEZONE_OFFSET, session.timezoneOffset)
             setProperty(KEY_SOURCE, session.source)
             setProperty(KEY_SAMPLE_RATE_HZ, session.sampleRateHz.toString())
             setProperty(KEY_INPUT_IDENTITY, session.inputIdentity)
@@ -183,6 +184,7 @@ class SessionRepository(context: Context) {
                 ?.takeIf { it.isNotBlank() }
                 ?.let(SessionOutcome::valueOf),
             startedAtUtcEpochMillis = metadata.getProperty(KEY_STARTED_UTC_MS, "0").toLong(),
+            timezoneOffset = metadata.getProperty(KEY_TIMEZONE_OFFSET).orEmpty(),
             elapsedMillis = metadata.getProperty(KEY_ELAPSED_MS, "0").toLong(),
             capturedMillis = metadata.getProperty(KEY_CAPTURED_MS, "0").toLong(),
             source = metadata.getProperty(KEY_SOURCE).orEmpty(),
@@ -293,6 +295,7 @@ class SessionRepository(context: Context) {
         const val KEY_STATE = "state"
         const val KEY_OUTCOME = "outcome"
         const val KEY_STARTED_UTC_MS = "started_utc_ms"
+        const val KEY_TIMEZONE_OFFSET = "timezone_offset"
         const val KEY_SOURCE = "source"
         const val KEY_SAMPLE_RATE_HZ = "sample_rate_hz"
         const val KEY_INPUT_IDENTITY = "input_identity"
