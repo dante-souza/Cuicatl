@@ -242,6 +242,8 @@ private fun MeterPage(
             snapshot.status == SessionRuntimeSnapshot.Status.FINALIZING
     val current = snapshot.currentFrame
     val session = snapshot.activeSession
+    val effectiveAgcRequest =
+        if (isActive) session?.agcRequest ?: agcRequest else agcRequest
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -341,7 +343,7 @@ private fun MeterPage(
                 AgcRequest.entries.forEach { request ->
                     val supported =
                         request == AgcRequest.DEFAULT || agcAvailable
-                    if (agcRequest == request) {
+                    if (effectiveAgcRequest == request) {
                         Button(
                             onClick = { onAgcRequestChange(request) },
                             enabled = !isActive && supported,
@@ -363,13 +365,21 @@ private fun MeterPage(
                     !agcAvailable ->
                         "Standard Android AGC is unavailable on this device; Off/On cannot be applied."
                     isActive ->
-                        "AGC request is frozen for this active session: " + agcRequest.displayLabel()
+                        "AGC request is frozen for this active session: " +
+                            effectiveAgcRequest.displayLabel()
                     else ->
                         "Choose before Start. Default observes without changing AGC; Off/On request a fixed Android effect state."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
+            if (isActive && !session?.processingState.isNullOrBlank()) {
+                Text(
+                    "Applied processing: " + session?.processingState.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
 
             val readinessText =
                 if (permissionDenied) {
