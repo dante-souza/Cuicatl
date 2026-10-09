@@ -29,6 +29,7 @@ Implemented in the first Phase 1 slice:
 - append-oriented app-private storage is selected; Room/SQLite is deferred with explicit adoption triggers;
 - modern Android service/permission coverage is not established by the J8;
 - the J8 VOICE_RECOGNITION path shows an observed background-noise/effective-gain adaptation that must be characterized before Phase 2 can treat it as a stable absolute acoustic reference;
+- pre-session Android AGC control is implemented as DEFAULT / FORCE_OFF / FORCE_ON where supported; requested and actual effect state are persisted in session metadata and Schema 1 processing_state; the fan/background comparison is pending device execution;
 - no SPL, calibration, A/Z weighting, Leq, Fast, or Slow values are displayed;
 - no acoustic accuracy claim is made.
 
