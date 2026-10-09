@@ -175,11 +175,17 @@ A saved session has an outcome such as `completed`, `interrupted`, or `recovered
 
 ### Persistence decision
 
-Compare a simple append-based format with Room/SQLite against the same save, reopen, export, and interruption checks. Select the smallest implementation that satisfies those requirements after a small Phase 1 preservation/recovery experiment. Low row volume alone does not decide the storage model.
+**Phase 1 evidence update — 2026-10-09:** retain the append-oriented app-private session design for the initial release baseline and defer Room/SQLite.
 
-For a file-based design, define record framing, buffered-write policy, partial-write recovery, metadata finalization, and consistency after interruption. For a database design, define transaction batching, recovery behavior, and schema scope. Document the observed preservation/loss bound of the selected implementation before release. Neither implementation is accepted solely because it appears simple.
+The original Revision 2 plan called for implemented append and Room/SQLite candidates. The append candidate subsequently passed the demonstrated normal-stop, reopen, export, forced-process-recovery, readable-prefix, and measured preservation checks on the J8. In the instrumented recovery run, 446 complete rows were visible immediately before the helper issued force-stop, 449 complete rows were recovered, and 0 complete rows from the measured pre-kill snapshot were lost. No current Phase 1 requirement requires relational querying, in-place editing, cross-session joins, or transactionally coupled record types.
 
-App-private storage is the authoritative session source. CSV is the portable representation; export may reuse a stable stored format if it meets the public contract. The UI never owns the only copy of the measurements.
+Building a second persistence stack solely to confirm that it is not presently needed would add implementation, migration, and recovery-validation cost without resolving an observed problem. Room/SQLite remains a deferred alternative with explicit reconsideration triggers: indexed multidimensional session queries, relational metadata, frequent partial updates, transactionally coupled records, or measured file-library performance limits.
+
+For the selected file-based design, record framing, buffered-write policy, partial-write recovery, metadata finalization, and interruption consistency are documented in the Phase 1 preservation and storage-decision records. The process-death result is not a zero-loss claim for sudden power removal or arbitrary storage corruption.
+
+App-private storage is the authoritative session source. CSV is the portable representation; the UI never owns the only copy of the measurements.
+
+A future local-first backup/import capability may copy finalized immutable sessions to a user-selected destination through Android's Storage Access Framework / DocumentsProvider ecosystem. That may include local/removable storage or a provider exposed by an installed drive application. The active app-private session remains authoritative; this does not imply bidirectional live sync, a Cuicatl account service, or custom cloud infrastructure.
 
 A user-started microphone foreground service is proposed for screen-off capture and app switching. Modern Android requires the appropriate microphone service declaration and permissions, and imposes while-in-use restrictions on starting it [S3]. Start from the visible app after permission approval; expose a persistent notification with Stop and session status. Review exact declarations against the selected SDK and test modern Android platform behavior explicitly.
 
@@ -195,9 +201,9 @@ Deliver a directly shareable, self-contained measurement CSV first. Include esse
 
 A richer bundle with separate session, segment, event, and measurement tables is later work, introduced when implemented capabilities or actual inspection needs justify it. Runtime bundle checksums are also later work; APK and archaeology artifact checksums remain part of release practice.
 
-### Provisional field layout
+### Schema 1 field layout — frozen 2026-10-09
 
-The following fields are candidates, not a frozen schema. Define units, references, null handling, and measurement validity early. Finalize schema 1 only after real sessions have been captured, exported, and inspected independently in the Phase 1 capture/export milestone.
+The Phase 1 fixtures were captured, exported, independently inspected, corrected for timing provenance and recovered-session elapsed-time semantics, and revalidated. The resulting row contract is frozen as **CSV Schema 1**. Breaking field changes require a new schema version. Units, null handling, timing provenance, and validity semantics are specified in `docs/architecture/csv-schema-v1.md`.
 
 | Field group | Intended context or quantity | Rule |
 | --- | --- | --- |
