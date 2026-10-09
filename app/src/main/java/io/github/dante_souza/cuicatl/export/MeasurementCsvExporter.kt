@@ -74,7 +74,7 @@ class MeasurementCsvExporter(
                     frame.clippedSampleCount.toString(),
                     frame.signalState.name,
                     frame.qualityFlags.joinToString("|") { it.name },
-                    session.elapsedMillis.toString(),
+                    session.elapsedMillis?.toString().orEmpty(),
                     session.capturedMillis.toString(),
                     session.interruptionReason.orEmpty(),
                 )
