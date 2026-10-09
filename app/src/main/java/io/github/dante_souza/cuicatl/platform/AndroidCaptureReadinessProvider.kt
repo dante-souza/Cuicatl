@@ -24,7 +24,7 @@ class AndroidCaptureReadinessProvider(
         ) {
             return CaptureReadiness.NotReady(
                 reason = CaptureReadiness.Reason.MICROPHONE_PERMISSION_REQUIRED,
-                detail = "Microphone permission is requested only after Start probe.",
+                detail = "Microphone permission is requested only after Start.",
             )
         }
 

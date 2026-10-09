@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 param(
+    [switch] $Doctor,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $GradleArgs
 )
@@ -59,6 +60,18 @@ function Get-JavaMajor([string] $JavaExe) {
     return $null
 }
 
+if ($Doctor) {
+    Write-Host 'Cuicatl JDK doctor (read-only; scoped to this process)'
+    Write-Host "JAVA_HOME: $env:JAVA_HOME"
+    $active = Get-Command java.exe -ErrorAction SilentlyContinue
+    if ($active) {
+        Write-Host "PATH java: $($active.Source)"
+        Write-Host "PATH version: $(Get-JavaVersionLine $active.Source)"
+    } else {
+        Write-Host 'PATH java: not found'
+    }
+}
+
 $candidateHomes = New-Object System.Collections.Generic.List[string]
 
 if ($env:JAVA_HOME) {
@@ -86,6 +99,17 @@ foreach ($candidateHome in $candidateHomes | Select-Object -Unique) {
         $selectedHome = $candidateHome
         break
     }
+}
+
+if ($Doctor) {
+    if ($selectedHome) {
+        Write-Host "Selected build JDK: $selectedHome"
+        Write-Host "Selected version: $(Get-JavaVersionLine (Join-Path $selectedHome 'bin\\java.exe'))"
+        Write-Host 'Result: JDK 17 available; run make jdk-repair to stop daemons, verify and build.'
+        exit 0
+    }
+    Write-Error 'Result: JDK 17 not found; install Temurin 17 or set JAVA_HOME to an existing JDK 17.'
+    exit 1
 }
 
 if (-not $selectedHome) {

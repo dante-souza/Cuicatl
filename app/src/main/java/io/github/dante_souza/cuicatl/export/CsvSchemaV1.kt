@@ -2,13 +2,16 @@
 package io.github.dante_souza.cuicatl.export
 
 /**
- * Candidate fields for the first real capture/export fixture.
+ * Cuicatl measurement CSV schema version 1.
  *
- * This is deliberately not schema version 1. Field names, repetition rules,
- * and packaging remain provisional until Phase 1 external inspection.
+ * Schema 1 was frozen after independent inspection of normal-stop and
+ * process-recovery exports on the Samsung Galaxy J8 during Phase 1.
+ * Breaking field changes require a new schema version.
  */
-object ProvisionalExportFields {
-    val candidateColumns = listOf(
+object CsvSchemaV1 {
+    const val VERSION = "1"
+
+    val columns = listOf(
         "schema_version",
         "session_id",
         "sequence",
@@ -17,7 +20,9 @@ object ProvisionalExportFields {
         "device_model",
         "android_version",
         "session_outcome",
-        "interval_start_utc",
+        "session_start_utc",
+        "session_timezone_offset",
+        "interval_start_utc_estimate",
         "elapsed_start_ms",
         "duration_ms",
         "timing_quality",
