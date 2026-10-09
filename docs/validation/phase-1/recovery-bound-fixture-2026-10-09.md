@@ -74,17 +74,24 @@ The CSV independently agrees with the saved-detail UI:
 - frames at exactly 0.0 dBFS sample peak: 5
 - maximum clipped samples in one frame: 7
 
-## Preservation-bound status
+## Preservation-bound result
 
-This fixture proves that 449 complete measurement frames form a valid recovered prefix and that the recovered-state UI/export semantics are correct.
+The instrumented J8 helper reported:
 
-The exact complete-frame loss at force-stop cannot be derived from the CSV or the three device screenshots alone. Closing the preservation-bound item still requires the stdout produced by make phase1-recovery-kill-j8, specifically:
+- state after recovery: SAVED
+- outcome: RECOVERED
+- interruption reason: process_recovery
+- pre-kill complete rows visible to the helper: 446
+- recovered complete rows: 449
+- known complete-row loss: 0
 
-- Pre-kill complete rows
-- Recovered complete rows
-- Known complete-row loss
+All 446 complete rows visible at the pre-kill snapshot survived recovery.
 
-If that console output was not retained, one final instrumented recovery run is sufficient; no additional ordinary-session evidence is needed.
+The recovered file contains three additional complete 100 ms frames. Those frames completed during the small race window between the helper's pre-kill row-count snapshot and the subsequent ADB force-stop command. They are valid additional persisted data; they must not be described as negative loss.
+
+Observed process-death preservation result for this run: **0 complete persisted rows lost from the measured pre-kill snapshot**.
+
+This result applies to the tested Android process-death path. It is not a claim of zero loss under sudden power removal or arbitrary storage failure, and it does not guarantee preservation of a partially written/in-flight frame that was not yet a complete persisted row at the snapshot.
 
 ## Decision
 
@@ -96,4 +103,4 @@ If that console output was not retained, one final instrumented recovery run is 
 
 **Readable recovered prefix: PASS (449 contiguous frames / 44.9 s).**
 
-**Exact observed complete-frame loss bound: PENDING helper stdout.**
+**Exact observed process-death complete-row loss from the instrumented pre-kill snapshot: 0 rows in this J8 run.**
