@@ -59,7 +59,7 @@ class SessionRepository(context: Context) {
             setProperty(KEY_SOURCE, session.source)
             setProperty(KEY_SAMPLE_RATE_HZ, session.sampleRateHz.toString())
             setProperty(KEY_INPUT_IDENTITY, session.inputIdentity)
-            setProperty(KEY_AGC_REQUEST, session.agcRequest.name)
+            session.agcRequest?.let { setProperty(KEY_AGC_REQUEST, it.name) }
             setProperty(KEY_PROCESSING_STATE, session.processingState)
             setProperty(KEY_SAMPLE_FORMAT, SAMPLE_FORMAT)
             setProperty(KEY_FRAME_COUNT, "0")
@@ -193,8 +193,7 @@ class SessionRepository(context: Context) {
             sampleRateHz = metadata.getProperty(KEY_SAMPLE_RATE_HZ, "0").toInt(),
             inputIdentity = metadata.getProperty(KEY_INPUT_IDENTITY).orEmpty(),
             agcRequest = metadata.getProperty(KEY_AGC_REQUEST)
-                ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() }
-                ?: AgcRequest.DEFAULT,
+                ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() },
             processingState = metadata.getProperty(KEY_PROCESSING_STATE).orEmpty(),
             frameCount = metadata.getProperty(KEY_FRAME_COUNT, "0").toLong(),
             interruptionReason = metadata.getProperty(KEY_INTERRUPTION_REASON)
