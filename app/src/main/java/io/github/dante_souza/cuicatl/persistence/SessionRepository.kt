@@ -2,6 +2,7 @@
 package io.github.dante_souza.cuicatl.persistence
 
 import android.content.Context
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
@@ -61,6 +62,7 @@ class SessionRepository(context: Context) {
             setProperty(KEY_INPUT_IDENTITY, session.inputIdentity)
             session.agcRequest?.let { setProperty(KEY_AGC_REQUEST, it.name) }
             setProperty(KEY_PROCESSING_STATE, session.processingState)
+            setProperty(KEY_FREQUENCY_WEIGHTING, session.frequencyWeighting.name)
             setProperty(KEY_SAMPLE_FORMAT, SAMPLE_FORMAT)
             setProperty(KEY_FRAME_COUNT, "0")
             setProperty(KEY_CAPTURED_MS, "0")
@@ -149,7 +151,7 @@ class SessionRepository(context: Context) {
 
     private fun parseFrameLine(line: String): MeasurementFrame? {
         val fields = line.split('\t')
-        if (fields.size != FRAME_FIELD_COUNT) return null
+        if (fields.size != FRAME_FIELD_COUNT && fields.size != FRAME_FIELD_COUNT + 2) return null
 
         return runCatching {
             MeasurementFrame(
@@ -167,6 +169,8 @@ class SessionRepository(context: Context) {
                 signalState = SignalState.valueOf(fields[11]),
                 timingQuality = TimingQuality.valueOf(fields[12]),
                 clippedSampleCount = fields[13].toInt(),
+                weightedMeanSquareFs = fields.getOrNull(15)?.takeIf { it.isNotEmpty() }?.toDouble(),
+                weightedRmsDbfs = fields.getOrNull(16)?.takeIf { it.isNotEmpty() }?.toDouble(),
                 qualityFlags = fields[14]
                     .takeIf { it.isNotBlank() }
                     ?.split('|')
@@ -196,6 +200,9 @@ class SessionRepository(context: Context) {
                 ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() },
             processingState = metadata.getProperty(KEY_PROCESSING_STATE).orEmpty(),
             frameCount = metadata.getProperty(KEY_FRAME_COUNT, "0").toLong(),
+            frequencyWeighting = metadata.getProperty(KEY_FREQUENCY_WEIGHTING)
+                ?.let { runCatching { FrequencyWeighting.valueOf(it) }.getOrNull() }
+                ?: FrequencyWeighting.Z,
             interruptionReason = metadata.getProperty(KEY_INTERRUPTION_REASON)
                 ?.takeIf { it.isNotBlank() },
         )
@@ -228,6 +235,8 @@ class SessionRepository(context: Context) {
                 frame.timingQuality.name,
                 frame.clippedSampleCount.toString(),
                 frame.qualityFlags.joinToString("|") { it.name },
+                frame.weightedMeanSquareFs?.toString().orEmpty(),
+                frame.weightedRmsDbfs?.toString().orEmpty(),
             ).joinToString("\t")
 
             output.write((line + "\n").toByteArray(Charsets.UTF_8))
@@ -292,7 +301,8 @@ class SessionRepository(context: Context) {
         const val FRAME_HEADER =
             "session_id\tsequence\telapsed_start_ms\tduration_ms\tsample_rate_hz\tsample_count\t" +
                 "mean_square_fs\trms_fs\tsample_peak_fs\trms_dbfs\tsample_peak_dbfs\t" +
-                "signal_state\ttiming_quality\tclipped_sample_count\tquality_flags"
+                "signal_state\ttiming_quality\tclipped_sample_count\tquality_flags\t" +
+                "weighted_mean_square_fs\tweighted_rms_dbfs"
 
         const val KEY_ID = "id"
         const val KEY_LABEL = "label"
@@ -305,6 +315,7 @@ class SessionRepository(context: Context) {
         const val KEY_INPUT_IDENTITY = "input_identity"
         const val KEY_AGC_REQUEST = "agc_request"
         const val KEY_PROCESSING_STATE = "processing_state"
+        const val KEY_FREQUENCY_WEIGHTING = "frequency_weighting"
         const val KEY_SAMPLE_FORMAT = "sample_format"
         const val KEY_FRAME_COUNT = "frame_count"
         const val KEY_CAPTURED_MS = "captured_ms"

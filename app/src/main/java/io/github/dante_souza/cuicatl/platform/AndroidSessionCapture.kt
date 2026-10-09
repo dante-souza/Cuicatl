@@ -13,6 +13,8 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.SystemClock
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.StreamingFrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementMath
@@ -35,6 +37,7 @@ class AndroidSessionCapture(
     context: Context,
     private val sessionId: String,
     private val agcRequest: AgcRequest,
+    private val frequencyWeighting: FrequencyWeighting,
     private val onStarted: (CaptureConfiguration) -> Unit,
     private val onFrame: (MeasurementFrame) -> Unit,
     private val onStopped: (elapsedMillis: Long) -> Unit,
@@ -79,6 +82,7 @@ class AndroidSessionCapture(
         var intervalStartSample = 0L
         var intervalSampleCount = 0
         var intervalSumSquares = 0.0
+        var weightedSumSquares = 0.0
         var intervalPeak = 0.0
         var intervalClipped = 0
 
@@ -107,6 +111,7 @@ class AndroidSessionCapture(
 
             startedAtElapsedRealtime = SystemClock.elapsedRealtime()
             val rate = active.sampleRate
+            val filter = StreamingFrequencyWeighting(frequencyWeighting, rate)
             val intervalSamples = maxOf(1, rate / 10)
             val buffer = ShortArray(maxOf(1024, intervalSamples))
             var expectedRouteId = active.routedDevice?.id
@@ -138,6 +143,7 @@ class AndroidSessionCapture(
                 if (intervalSampleCount <= 0) return
 
                 val meanSquare = intervalSumSquares / intervalSampleCount
+                val weightedMeanSquare = weightedSumSquares / intervalSampleCount
                 val rms = MeasurementMath.rmsFromMeanSquare(meanSquare)
                 val rmsDbfs = MeasurementMath.dbfsFromMeanSquare(meanSquare)
                 val peakDbfs =
@@ -168,6 +174,8 @@ class AndroidSessionCapture(
                         timingQuality = timingQuality(active),
                         clippedSampleCount = intervalClipped,
                         qualityFlags = qualityFlags,
+                        weightedMeanSquareFs = weightedMeanSquare,
+                        weightedRmsDbfs = MeasurementMath.dbfsFromMeanSquare(weightedMeanSquare),
                     ),
                 )
 
@@ -175,6 +183,7 @@ class AndroidSessionCapture(
                 intervalStartSample += intervalSampleCount
                 intervalSampleCount = 0
                 intervalSumSquares = 0.0
+                weightedSumSquares = 0.0
                 intervalPeak = 0.0
                 intervalClipped = 0
             }
@@ -195,6 +204,8 @@ class AndroidSessionCapture(
                     val raw = buffer[index]
                     val normalized = raw.toDouble() / 32768.0
                     intervalSumSquares += normalized * normalized
+                    val weighted = filter.process(normalized)
+                    weightedSumSquares += weighted * weighted
                     intervalPeak = maxOf(intervalPeak, abs(normalized))
                     if (raw == Short.MIN_VALUE || raw == Short.MAX_VALUE) {
                         intervalClipped += 1

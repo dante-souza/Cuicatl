@@ -17,6 +17,7 @@ data class MeasurementSession(
     val processingState: String = "",
     val frameCount: Long = 0L,
     val interruptionReason: String? = null,
+    val frequencyWeighting: FrequencyWeighting = FrequencyWeighting.Z,
 )
 
 enum class SessionState {
