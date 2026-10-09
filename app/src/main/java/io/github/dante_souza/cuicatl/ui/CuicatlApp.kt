@@ -484,7 +484,7 @@ private fun SavedSessionDetailCard(
             Text("Recorded history", style = MaterialTheme.typography.titleMedium)
             LevelHistoryChart(detail.frames)
             Text(
-                "CSV schema marker is phase1-draft until the exported fixture is independently inspected.",
+                "CSV schema 1 · validated Phase 1 digital measurement export.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
