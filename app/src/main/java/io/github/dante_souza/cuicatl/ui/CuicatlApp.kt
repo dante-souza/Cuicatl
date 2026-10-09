@@ -523,7 +523,10 @@ private fun SavedSessionDetailCard(
             Text("Source: " + session.source)
             Text("Sample rate: " + session.sampleRateHz + " Hz")
             Text("Input: " + session.inputIdentity)
-            Text("AGC request: " + session.agcRequest.displayLabel())
+            Text(
+                "AGC request: " +
+                    (session.agcRequest?.displayLabel() ?: "Unknown (legacy session)"),
+            )
             Text(
                 "Processing: " + session.processingState,
                 style = MaterialTheme.typography.bodySmall,
