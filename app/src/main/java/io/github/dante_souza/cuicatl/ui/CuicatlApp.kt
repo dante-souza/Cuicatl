@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.MeterProjection
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
@@ -320,7 +321,8 @@ private fun MeterPage(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Live history", style = MaterialTheme.typography.titleMedium)
-                LevelHistoryChart(snapshot.history)
+                Text("Weighting: " + (snapshot.activeSession?.frequencyWeighting?.name ?: "Z") + " · digital dBFS")
+                LevelHistoryChart(snapshot.history, snapshot.activeSession?.frequencyWeighting ?: FrequencyWeighting.Z)
                 Text(
                     "100 ms persisted measurement frames · chart is presentation only",
                     style = MaterialTheme.typography.bodySmall,
@@ -468,7 +470,7 @@ private fun HistoryPage(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Current session", style = MaterialTheme.typography.titleLarge)
-                LevelHistoryChart(snapshot.history)
+                LevelHistoryChart(snapshot.history, snapshot.activeSession?.frequencyWeighting ?: FrequencyWeighting.Z)
                 Text(
                     "Page changes do not own or reset capture.",
                     style = MaterialTheme.typography.bodySmall,
@@ -589,7 +591,13 @@ private fun SavedSessionDetailCard(
 
             Spacer(modifier = Modifier.height(4.dp))
             Text("Recorded history", style = MaterialTheme.typography.titleMedium)
-            LevelHistoryChart(detail.frames)
+            Text("Weighting: " + session.frequencyWeighting.name + " · digital dBFS")
+            val statistics = remember(detail) { MeterProjection.statistics(detail.frames, session.frequencyWeighting) }
+            Text("Current: " + formatDb(statistics.currentDbfs))
+            Text("Minimum: " + formatDb(statistics.minimumDbfs))
+            Text("Maximum: " + formatDb(statistics.maximumDbfs))
+            Text("Leq: " + formatDb(statistics.leqDbfs))
+            LevelHistoryChart(detail.frames, session.frequencyWeighting)
             Text(
                 "CSV schema 1 · validated Phase 1 digital measurement export.",
                 style = MaterialTheme.typography.bodySmall,
@@ -600,7 +608,7 @@ private fun SavedSessionDetailCard(
 }
 
 @Composable
-private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
+private fun LevelHistoryChart(frames: List<MeasurementFrame>, weighting: FrequencyWeighting) {
     val lineColor = MaterialTheme.colorScheme.primary
     val guideColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     val displayFrames = remember(frames) {
@@ -611,17 +619,15 @@ private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
             frames.chunked(chunk).map { group -> group.last() }
         }
     }
-    val values = displayFrames.mapNotNull { it.rmsDbfs }
-
-    if (values.size < 2) {
-        Text("Waiting for enough non-zero frames…")
+    // Preserve sample positions and missing/zero intervals: no false bridging.
+    val values = displayFrames.map { MeterProjection.level(it, weighting) }
+    if (values.count { it != null } < 2) {
+        Text("Waiting for enough valid non-zero frames…")
         return
     }
 
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp),
+        modifier = Modifier.fillMaxWidth().height(180.dp),
     ) {
         drawLine(
             color = guideColor,
@@ -633,18 +639,17 @@ private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
             start = Offset(0f, 0f),
             end = Offset(size.width, 0f),
         )
-
         values.zipWithNext().forEachIndexed { index, pair ->
-            val x1 = size.width * index / (values.size - 1).toFloat()
-            val x2 = size.width * (index + 1) / (values.size - 1).toFloat()
-            val y1 = dbToY(pair.first, size.height)
-            val y2 = dbToY(pair.second, size.height)
-            drawLine(
-                color = lineColor,
-                start = Offset(x1, y1),
-                end = Offset(x2, y2),
-                strokeWidth = 3f,
-            )
+            val first = pair.first
+            val second = pair.second
+            if (first != null && second != null) {
+                drawLine(
+                    color = lineColor,
+                    start = Offset(size.width * index / (values.size - 1).toFloat(), dbToY(first, size.height)),
+                    end = Offset(size.width * (index + 1) / (values.size - 1).toFloat(), dbToY(second, size.height)),
+                    strokeWidth = 3f,
+                )
+            }
         }
     }
 }
