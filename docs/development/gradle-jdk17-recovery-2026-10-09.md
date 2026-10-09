@@ -58,4 +58,19 @@ In Android Studio: **Settings → Build, Execution, Deployment → Build Tools �
 
 ## Scope and verification
 
-The Makefile and launcher changes were committed to the Phase 1 feature branch. They have **not been executed on the Windows lab host from this session**; run `make jdk-repair` and `make check` locally for runtime validation. No dependency/AGP upgrade is part of this repair.
+The Makefile and launcher changes were committed to the Phase 1 feature branch. The user executed both recovery and quality-gate targets on the Windows 11 / Cygwin Make / PowerShell lab host on **2026-10-09**, with the following reported results:
+
+| Command / step | Observed result |
+| --- | --- |
+| `git pull --ff-only origin feature/phase-1-usable-session-export` | Fast-forward from `704f91d` to `096c77b`; 3 changed/new files |
+| `make jdk-doctor` | `JAVA_HOME` and PATH resolve to Temurin 17.0.20.1; selected build JDK 17.0.20.1 |
+| `make gradle-stop` | One Gradle daemon stopped |
+| `make gradle-verify` | Gradle 8.13; launcher JVM 17.0.20.1; daemon JVM Temurin 17 |
+| `make build-debug` (inside `make jdk-repair`) | **BUILD SUCCESSFUL in 13s**; 37 tasks up-to-date |
+| `make check` | **BUILD SUCCESSFUL in 14s**; 53 tasks: 1 executed, 52 up-to-date |
+
+SDK Platform 36 was detected at `C:\\Users\\dante\\AppData\\Local\\Android\\Sdk\\platforms\\android-36`. The message explaining a single-use daemon under `--no-daemon` is informational, not a failure.
+
+**Validation conclusion:** Windows host Make recovery chain and test/lint/build quality gate both passed. This evidence does **not** constitute a device-install or acoustic-capture validation. No dependency/AGP upgrade was made.
+
+**Outstanding local-file item:** `git status` before the pull reported an unstaged modification to `gradle.properties`. The fast-forward pull succeeded without overwriting that file; inspect `git diff -- gradle.properties` and preserve or intentionally resolve the change before creating a release/archaeology snapshot.
