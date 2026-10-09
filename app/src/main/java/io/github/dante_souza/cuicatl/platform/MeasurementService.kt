@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import android.os.Handler
@@ -18,6 +19,8 @@ import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.LevelStatisticsAccumulator
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
+import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
+import io.github.dante_souza.cuicatl.domain.ReferenceAdjustmentFactory
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionCommandPolicy
 import io.github.dante_souza.cuicatl.domain.SessionOutcome
@@ -25,6 +28,7 @@ import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
 import io.github.dante_souza.cuicatl.domain.SessionState
 import io.github.dante_souza.cuicatl.export.MeasurementCsvExporter
 import io.github.dante_souza.cuicatl.persistence.SessionRepository
+import io.github.dante_souza.cuicatl.persistence.ReferenceAdjustmentRepository
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -39,6 +43,7 @@ class MeasurementService : Service() {
 
     private lateinit var repository: SessionRepository
     private lateinit var exporter: MeasurementCsvExporter
+    private lateinit var referenceRepository: ReferenceAdjustmentRepository
 
     @Volatile
     private var runtimeSnapshot = SessionRuntimeSnapshot()
@@ -67,6 +72,7 @@ class MeasurementService : Service() {
         super.onCreate()
         repository = SessionRepository(this)
         exporter = MeasurementCsvExporter(this)
+        referenceRepository = ReferenceAdjustmentRepository(this)
         val recovered = repository.recoverInterruptedSessions()
         if (recovered > 0) {
             runtimeSnapshot = SessionRuntimeSnapshot(
@@ -124,6 +130,32 @@ class MeasurementService : Service() {
 
     fun exportSavedSession(sessionId: String): File? =
         repository.loadSession(sessionId)?.let(exporter::export)
+
+    fun activeReferenceAdjustment(): ReferenceAdjustment? = referenceRepository.loadActive()
+
+    fun createReferenceAdjustment(
+        sessionId: String,
+        referenceLevelDbSpl: Double,
+        referenceMethod: String,
+        notes: String,
+    ): String? {
+        val detail = repository.loadSession(sessionId) ?: return "Saved session could not be loaded."
+        val candidate = ReferenceAdjustmentFactory.fromSavedSession(
+            detail = detail,
+            deviceModel = Build.MODEL,
+            referenceLevelDbSpl = referenceLevelDbSpl,
+            referenceMethod = referenceMethod,
+            createdAtUtcEpochMillis = System.currentTimeMillis(),
+            notes = notes,
+        )
+        val adjustment = candidate.adjustment ?: return candidate.rejectionReason ?: "Reference adjustment rejected."
+        referenceRepository.saveActive(adjustment)
+        return null
+    }
+
+    fun clearReferenceAdjustment() {
+        referenceRepository.clearActive()
+    }
 
     private fun startMeasurement(
         label: String,
