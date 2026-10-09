@@ -46,11 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
+import io.github.dante_souza.cuicatl.platform.AndroidAudioProcessingCapabilities
 import io.github.dante_souza.cuicatl.platform.AndroidCaptureReadinessProvider
 import io.github.dante_souza.cuicatl.platform.MeasurementService
 import java.time.Instant
@@ -70,6 +72,7 @@ fun CuicatlApp() {
     val measurementService = rememberMeasurementService()
     var page by rememberSaveable { mutableStateOf(AnalyzerPage.METER) }
     var sessionLabel by rememberSaveable { mutableStateOf("") }
+    var agcRequest by rememberSaveable { mutableStateOf(AgcRequest.DEFAULT) }
     var snapshot by remember { mutableStateOf(SessionRuntimeSnapshot()) }
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
@@ -85,6 +88,9 @@ fun CuicatlApp() {
 
     val readinessProvider = remember(context) {
         AndroidCaptureReadinessProvider(context)
+    }
+    val agcAvailable = remember {
+        AndroidAudioProcessingCapabilities.isAgcAvailable()
     }
     val readiness = remember(permissionGranted) {
         readinessProvider.readiness()
@@ -115,6 +121,7 @@ fun CuicatlApp() {
         val intent = Intent(context, MeasurementService::class.java).apply {
             action = MeasurementService.ACTION_START
             putExtra(MeasurementService.EXTRA_LABEL, sessionLabel)
+            putExtra(MeasurementService.EXTRA_AGC_REQUEST, agcRequest.name)
         }
         ContextCompat.startForegroundService(context, intent)
     }
@@ -170,6 +177,9 @@ fun CuicatlApp() {
                         snapshot = snapshot,
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
+                        agcRequest = agcRequest,
+                        onAgcRequestChange = { agcRequest = it },
+                        agcAvailable = agcAvailable,
                         readiness = readiness,
                         permissionGranted = permissionGranted,
                         permissionDenied = permissionDenied,
@@ -217,6 +227,9 @@ private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
+    agcRequest: AgcRequest,
+    onAgcRequestChange: (AgcRequest) -> Unit,
+    agcAvailable: Boolean,
     readiness: CaptureReadiness,
     permissionGranted: Boolean,
     permissionDenied: Boolean,
@@ -314,6 +327,48 @@ private fun MeterPage(
                 label = { Text("Session label") },
                 enabled = !isActive,
                 singleLine = true,
+            )
+
+            Text(
+                "Android AGC",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AgcRequest.entries.forEach { request ->
+                    val supported =
+                        request == AgcRequest.DEFAULT || agcAvailable
+                    if (agcRequest == request) {
+                        Button(
+                            onClick = { onAgcRequestChange(request) },
+                            enabled = !isActive && supported,
+                        ) {
+                            Text(request.displayLabel())
+                        }
+                    } else {
+                        TextButton(
+                            onClick = { onAgcRequestChange(request) },
+                            enabled = !isActive && supported,
+                        ) {
+                            Text(request.displayLabel())
+                        }
+                    }
+                }
+            }
+            Text(
+                when {
+                    !agcAvailable ->
+                        "Standard Android AGC is unavailable on this device; Off/On cannot be applied."
+                    isActive ->
+                        "AGC request is frozen for this active session: " + agcRequest.displayLabel()
+                    else ->
+                        "Choose before Start. Default observes without changing AGC; Off/On request a fixed Android effect state."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
             )
 
             val readinessText =
@@ -468,6 +523,12 @@ private fun SavedSessionDetailCard(
             Text("Source: " + session.source)
             Text("Sample rate: " + session.sampleRateHz + " Hz")
             Text("Input: " + session.inputIdentity)
+            Text("AGC request: " + session.agcRequest.displayLabel())
+            Text(
+                "Processing: " + session.processingState,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
             Text(
                 if (clippedFrames > 0) {
                     "Clipping: " + clippedFrames + " frames · " +
@@ -549,6 +610,12 @@ private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
             )
         }
     }
+}
+
+private fun AgcRequest.displayLabel(): String = when (this) {
+    AgcRequest.DEFAULT -> "Default"
+    AgcRequest.FORCE_OFF -> "Off"
+    AgcRequest.FORCE_ON -> "On"
 }
 
 private fun dbToY(db: Double, height: Float): Float {
