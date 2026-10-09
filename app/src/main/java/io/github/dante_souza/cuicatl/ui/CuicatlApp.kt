@@ -415,39 +415,6 @@ private fun MeterPage(
         }
     }
 
-    var showSanitizeConfirmation by remember { mutableStateOf(false) }
-    var sanitizeMessage by remember { mutableStateOf<String?>(null) }
-
-    if (showSanitizeConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showSanitizeConfirmation = false },
-            title = { Text("Sanitize saved sessions?") },
-            text = {
-                Text(
-                    "This removes all saved Cuicatl session records, cached CSV exports, and the active reference adjustment. " +
-                        "An active recording is not deleted. Copies already shared or backed up are not affected. " +
-                        "This is logical deletion, not guaranteed forensic secure erasure.",
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val deleted = onSanitizeSavedSessions()
-                        sanitizeMessage = "Deleted " + deleted + " saved session(s)."
-                        showSanitizeConfirmation = false
-                    },
-                ) {
-                    Text("Delete all local sessions", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSanitizeConfirmation = false }) {
-                    Text("Cancel")
-                }
-            },
-        )
-    }
-
     if (snapshot.history.isNotEmpty()) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -593,6 +560,39 @@ private fun HistoryPage(
     onDeleteSession: (SavedSessionDetail) -> Boolean,
     onSanitizeSavedSessions: () -> Int,
 ) {
+    var showSanitizeConfirmation by remember { mutableStateOf(false) }
+    var sanitizeMessage by remember { mutableStateOf<String?>(null) }
+
+    if (showSanitizeConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showSanitizeConfirmation = false },
+            title = { Text("Sanitize saved sessions?") },
+            text = {
+                Text(
+                    "This removes all saved Cuicatl session records, cached CSV exports, and the active reference adjustment. " +
+                        "An active recording is not deleted. Copies already shared or backed up are not affected. " +
+                        "This is logical deletion, not guaranteed forensic secure erasure.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deleted = onSanitizeSavedSessions()
+                        sanitizeMessage = "Deleted " + deleted + " saved session(s)."
+                        showSanitizeConfirmation = false
+                    },
+                ) {
+                    Text("Delete all local sessions", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSanitizeConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     if (selectedDetail != null) {
         SavedSessionDetailCard(
             detail = selectedDetail,
