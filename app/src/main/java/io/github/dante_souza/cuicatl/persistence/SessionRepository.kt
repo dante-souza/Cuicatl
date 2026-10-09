@@ -2,6 +2,7 @@
 package io.github.dante_souza.cuicatl.persistence
 
 import android.content.Context
+import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
 import io.github.dante_souza.cuicatl.domain.QualityFlag
@@ -58,6 +59,7 @@ class SessionRepository(context: Context) {
             setProperty(KEY_SOURCE, session.source)
             setProperty(KEY_SAMPLE_RATE_HZ, session.sampleRateHz.toString())
             setProperty(KEY_INPUT_IDENTITY, session.inputIdentity)
+            setProperty(KEY_AGC_REQUEST, session.agcRequest.name)
             setProperty(KEY_PROCESSING_STATE, session.processingState)
             setProperty(KEY_SAMPLE_FORMAT, SAMPLE_FORMAT)
             setProperty(KEY_FRAME_COUNT, "0")
@@ -190,6 +192,9 @@ class SessionRepository(context: Context) {
             source = metadata.getProperty(KEY_SOURCE).orEmpty(),
             sampleRateHz = metadata.getProperty(KEY_SAMPLE_RATE_HZ, "0").toInt(),
             inputIdentity = metadata.getProperty(KEY_INPUT_IDENTITY).orEmpty(),
+            agcRequest = metadata.getProperty(KEY_AGC_REQUEST)
+                ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() }
+                ?: AgcRequest.DEFAULT,
             processingState = metadata.getProperty(KEY_PROCESSING_STATE).orEmpty(),
             frameCount = metadata.getProperty(KEY_FRAME_COUNT, "0").toLong(),
             interruptionReason = metadata.getProperty(KEY_INTERRUPTION_REASON)
@@ -299,6 +304,7 @@ class SessionRepository(context: Context) {
         const val KEY_SOURCE = "source"
         const val KEY_SAMPLE_RATE_HZ = "sample_rate_hz"
         const val KEY_INPUT_IDENTITY = "input_identity"
+        const val KEY_AGC_REQUEST = "agc_request"
         const val KEY_PROCESSING_STATE = "processing_state"
         const val KEY_SAMPLE_FORMAT = "sample_format"
         const val KEY_FRAME_COUNT = "frame_count"
