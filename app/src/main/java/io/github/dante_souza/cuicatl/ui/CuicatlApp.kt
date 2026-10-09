@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -262,6 +263,24 @@ fun CuicatlApp() {
                             measurementService?.clearReferenceAdjustment()
                             activeReferenceAdjustment = null
                         },
+                        onDeleteSession = { detail ->
+                            val deleted = measurementService?.deleteSavedSession(detail.session.id) == true
+                            if (deleted) {
+                                selectedDetail = null
+                                selectedSessionId = null
+                                savedSessions = measurementService?.savedSessions().orEmpty()
+                                activeReferenceAdjustment = measurementService?.activeReferenceAdjustment()
+                            }
+                            deleted
+                        },
+                        onSanitizeSavedSessions = {
+                            val deleted = measurementService?.sanitizeSavedSessions() ?: 0
+                            selectedDetail = null
+                            selectedSessionId = null
+                            savedSessions = measurementService?.savedSessions().orEmpty()
+                            activeReferenceAdjustment = measurementService?.activeReferenceAdjustment()
+                            deleted
+                        },
                     )
                 }
             }
@@ -394,6 +413,39 @@ private fun MeterPage(
                 )
             }
         }
+    }
+
+    var showSanitizeConfirmation by remember { mutableStateOf(false) }
+    var sanitizeMessage by remember { mutableStateOf<String?>(null) }
+
+    if (showSanitizeConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showSanitizeConfirmation = false },
+            title = { Text("Sanitize saved sessions?") },
+            text = {
+                Text(
+                    "This removes all saved Cuicatl session records, cached CSV exports, and the active reference adjustment. " +
+                        "An active recording is not deleted. Copies already shared or backed up are not affected. " +
+                        "This is logical deletion, not guaranteed forensic secure erasure.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deleted = onSanitizeSavedSessions()
+                        sanitizeMessage = "Deleted " + deleted + " saved session(s)."
+                        showSanitizeConfirmation = false
+                    },
+                ) {
+                    Text("Delete all local sessions", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSanitizeConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 
     if (snapshot.history.isNotEmpty()) {
@@ -538,6 +590,8 @@ private fun HistoryPage(
     activeReferenceAdjustment: ReferenceAdjustment?,
     onCreateReferenceAdjustment: (SavedSessionDetail, Double, String, String) -> String?,
     onClearReferenceAdjustment: () -> Unit,
+    onDeleteSession: (SavedSessionDetail) -> Boolean,
+    onSanitizeSavedSessions: () -> Int,
 ) {
     if (selectedDetail != null) {
         SavedSessionDetailCard(
@@ -547,6 +601,7 @@ private fun HistoryPage(
             activeReferenceAdjustment = activeReferenceAdjustment,
             onCreateReferenceAdjustment = onCreateReferenceAdjustment,
             onClearReferenceAdjustment = onClearReferenceAdjustment,
+            onDeleteSession = onDeleteSession,
         )
         return
     }
@@ -573,7 +628,25 @@ private fun HistoryPage(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Saved sessions", style = MaterialTheme.typography.titleLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Saved sessions", style = MaterialTheme.typography.titleLarge)
+                if (savedSessions.isNotEmpty()) {
+                    TextButton(onClick = { showSanitizeConfirmation = true }) {
+                        Text("Sanitize", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+            sanitizeMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
 
             if (savedSessions.isEmpty()) {
                 Text(
@@ -619,14 +692,50 @@ private fun SavedSessionDetailCard(
     activeReferenceAdjustment: ReferenceAdjustment?,
     onCreateReferenceAdjustment: (SavedSessionDetail, Double, String, String) -> String?,
     onClearReferenceAdjustment: () -> Unit,
+    onDeleteSession: (SavedSessionDetail) -> Boolean,
 ) {
     val session = detail.session
+    var showDeleteConfirmation by remember(detail.session.id) { mutableStateOf(false) }
+    var deleteMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
     var referenceLevelText by remember(detail.session.id) { mutableStateOf("") }
     var referenceMethod by remember(detail.session.id) { mutableStateOf("") }
     var referenceNotes by remember(detail.session.id) { mutableStateOf("") }
     var referenceMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
     val clippedFrames = detail.frames.count { it.clippedSampleCount > 0 }
     val clippedSamples = detail.frames.sumOf { it.clippedSampleCount.toLong() }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete this local session?") },
+            text = {
+                Text(
+                    "This removes the app-private measurement record and any cached CSV created by Cuicatl. " +
+                        "Copies already shared or saved elsewhere are not affected. " +
+                        "If this session is the source of the active reference adjustment, that adjustment is cleared.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deleted = onDeleteSession(detail)
+                        if (!deleted) {
+                            deleteMessage = "The session could not be deleted."
+                        }
+                        showDeleteConfirmation = false
+                    },
+                ) {
+                    Text("Delete local session", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -639,6 +748,16 @@ private fun SavedSessionDetailCard(
             ) {
                 TextButton(onClick = onBack) { Text("Back") }
                 Button(onClick = { onShare(detail) }) { Text("Share CSV") }
+            }
+            TextButton(onClick = { showDeleteConfirmation = true }) {
+                Text("Delete local session", color = MaterialTheme.colorScheme.error)
+            }
+            deleteMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             Text(
