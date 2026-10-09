@@ -157,6 +157,25 @@ class MeasurementService : Service() {
         referenceRepository.clearActive()
     }
 
+    fun deleteSavedSession(sessionId: String): Boolean {
+        val deleted = repository.deleteSavedSession(sessionId)
+        if (!deleted) return false
+
+        exporter.deleteCachedExports(sessionId)
+        val activeReference = referenceRepository.loadActive()
+        if (activeReference?.id == "ref-" + sessionId) {
+            referenceRepository.clearActive()
+        }
+        return true
+    }
+
+    fun sanitizeSavedSessions(): Int {
+        val deleted = repository.deleteAllSavedSessions()
+        exporter.clearCachedExports()
+        referenceRepository.clearActive()
+        return deleted
+    }
+
     private fun startMeasurement(
         label: String,
         agcRequest: AgcRequest,

@@ -103,6 +103,29 @@ class SessionRepository(context: Context) {
         )
     }
 
+    fun deleteSavedSession(sessionId: String): Boolean {
+        val directory = sessionDirectory(sessionId)
+        val metadata = readMetadata(directory) ?: return false
+        if (metadata.getProperty(KEY_STATE) != SessionState.SAVED.name) return false
+        return directory.deleteRecursively()
+    }
+
+    fun deleteAllSavedSessions(): Int {
+        var deleted = 0
+        sessionsRoot.listFiles()
+            ?.filter { it.isDirectory }
+            ?.forEach { directory ->
+                val metadata = readMetadata(directory) ?: return@forEach
+                if (
+                    metadata.getProperty(KEY_STATE) == SessionState.SAVED.name &&
+                    directory.deleteRecursively()
+                ) {
+                    deleted += 1
+                }
+            }
+        return deleted
+    }
+
     private fun sessionDirectory(sessionId: String): File =
         File(sessionsRoot, sessionId)
 
