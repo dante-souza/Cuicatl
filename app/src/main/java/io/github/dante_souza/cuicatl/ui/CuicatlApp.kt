@@ -73,6 +73,7 @@ fun CuicatlApp() {
     var snapshot by remember { mutableStateOf(SessionRuntimeSnapshot()) }
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
+    var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var permissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -122,6 +123,7 @@ fun CuicatlApp() {
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
         permissionGranted = granted
+        permissionDenied = !granted
         if (granted) {
             startMeasurement()
         }
@@ -170,6 +172,7 @@ fun CuicatlApp() {
                         onLabelChange = { sessionLabel = it },
                         readiness = readiness,
                         permissionGranted = permissionGranted,
+                        permissionDenied = permissionDenied,
                         onStart = {
                             if (permissionGranted) {
                                 startMeasurement()
@@ -216,6 +219,7 @@ private fun MeterPage(
     onLabelChange: (String) -> Unit,
     readiness: CaptureReadiness,
     permissionGranted: Boolean,
+    permissionDenied: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
@@ -312,13 +316,18 @@ private fun MeterPage(
                 singleLine = true,
             )
 
-            val readinessText = when (readiness) {
-                CaptureReadiness.Ready ->
-                    "Ready. Recording starts only when you press Start."
+            val readinessText =
+                if (permissionDenied) {
+                    "Microphone permission denied. No capture was started."
+                } else {
+                    when (readiness) {
+                        CaptureReadiness.Ready ->
+                            "Ready. Recording starts only when you press Start."
 
-                is CaptureReadiness.NotReady ->
-                    readiness.detail ?: "Microphone capture is not ready."
-            }
+                        is CaptureReadiness.NotReady ->
+                            readiness.detail ?: "Microphone capture is not ready."
+                    }
+                }
             Text(
                 readinessText,
                 style = MaterialTheme.typography.bodySmall,
