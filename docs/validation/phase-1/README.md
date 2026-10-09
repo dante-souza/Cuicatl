@@ -25,7 +25,7 @@ Implemented in the first Phase 1 slice:
 ## Deliberately not claimed yet
 
 - schema version 1 is not frozen;
-- append storage has not yet passed the J8 process-kill recovery experiment;
+- append storage has passed process-kill recovery semantics and readable-prefix recovery; the exact observed loss bound still needs one instrumented retry;
 - the required SQLite/Room comparison is not yet closed;
 - modern Android service/permission coverage is not established by the J8;
 - no SPL, calibration, A/Z weighting, Leq, Fast, or Slow values are displayed;
@@ -44,7 +44,7 @@ Implemented in the first Phase 1 slice:
 - [x] Exported row count and sequence are independently checked (1,547 rows; sequence 0–1,546 contiguous).
 - [x] Exported RMS/peak values are independently recalculated and consistent with the digital definitions.
 - [x] Clipping count/flag is present in the first J8 fixture; 130 clipped frames / 83,349 endpoint samples were independently counted.
-- [ ] Process death produces a recovered/interrupted record, never a false continuous session.
+- [x] Process death produces a RECOVERED record with process_recovery, never a false continuous session.
 - [ ] Observed preservation/loss bound is recorded.
 - [ ] Append vs SQLite/Room comparison is closed with evidence.
 - [ ] Storage failure behavior is exercised or explicitly recorded as unexercised.
