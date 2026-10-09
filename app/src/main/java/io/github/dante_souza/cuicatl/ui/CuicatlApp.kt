@@ -54,6 +54,7 @@ import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
+import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
 import io.github.dante_souza.cuicatl.platform.AndroidAudioProcessingCapabilities
@@ -82,6 +83,7 @@ fun CuicatlApp() {
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
     var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
+    var activeReferenceAdjustment by remember { mutableStateOf<ReferenceAdjustment?>(null) }
     val scrollState = rememberScrollState()
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var permissionGranted by remember {
@@ -108,6 +110,7 @@ fun CuicatlApp() {
             onDispose { }
         } else {
             savedSessions = measurementService.savedSessions()
+            activeReferenceAdjustment = measurementService.activeReferenceAdjustment()
             selectedSessionId?.let { selectedId ->
                 selectedDetail = measurementService.loadSavedSession(selectedId)
             }
@@ -240,6 +243,21 @@ fun CuicatlApp() {
                             if (file != null) {
                                 shareCsv(context, file)
                             }
+                        },
+                        activeReferenceAdjustment = activeReferenceAdjustment,
+                        onCreateReferenceAdjustment = { detail, level, method, notes ->
+                            val error = measurementService?.createReferenceAdjustment(
+                                sessionId = detail.session.id,
+                                referenceLevelDbSpl = level,
+                                referenceMethod = method,
+                                notes = notes,
+                            ) ?: "Measurement service is unavailable."
+                            activeReferenceAdjustment = measurementService?.activeReferenceAdjustment()
+                            error
+                        },
+                        onClearReferenceAdjustment = {
+                            measurementService?.clearReferenceAdjustment()
+                            activeReferenceAdjustment = null
                         },
                     )
                 }
@@ -473,12 +491,18 @@ private fun HistoryPage(
     onSelect: (MeasurementSession) -> Unit,
     onBack: () -> Unit,
     onShare: (SavedSessionDetail) -> Unit,
+    activeReferenceAdjustment: ReferenceAdjustment?,
+    onCreateReferenceAdjustment: (SavedSessionDetail, Double, String, String) -> String?,
+    onClearReferenceAdjustment: () -> Unit,
 ) {
     if (selectedDetail != null) {
         SavedSessionDetailCard(
             detail = selectedDetail,
             onBack = onBack,
             onShare = onShare,
+            activeReferenceAdjustment = activeReferenceAdjustment,
+            onCreateReferenceAdjustment = onCreateReferenceAdjustment,
+            onClearReferenceAdjustment = onClearReferenceAdjustment,
         )
         return
     }
@@ -548,8 +572,15 @@ private fun SavedSessionDetailCard(
     detail: SavedSessionDetail,
     onBack: () -> Unit,
     onShare: (SavedSessionDetail) -> Unit,
+    activeReferenceAdjustment: ReferenceAdjustment?,
+    onCreateReferenceAdjustment: (SavedSessionDetail, Double, String, String) -> String?,
+    onClearReferenceAdjustment: () -> Unit,
 ) {
     val session = detail.session
+    var referenceLevelText by remember(detail.session.id) { mutableStateOf("") }
+    var referenceMethod by remember(detail.session.id) { mutableStateOf("") }
+    var referenceNotes by remember(detail.session.id) { mutableStateOf("") }
+    var referenceMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
     val clippedFrames = detail.frames.count { it.clippedSampleCount > 0 }
     val clippedSamples = detail.frames.sumOf { it.clippedSampleCount.toLong() }
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -623,6 +654,73 @@ private fun SavedSessionDetailCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Reference adjustment setup", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Use only a deliberate physical reference recording. Storing an adjustment does not enable SPL estimates.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            activeReferenceAdjustment?.let { active ->
+                Text(
+                    "Active stored adjustment: " + active.frequencyWeighting.name +
+                        " · correction " + String.format(Locale.US, "%+.2f dB", active.correctionDb),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Method: " + active.referenceMethod,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = onClearReferenceAdjustment) {
+                    Text("Clear active adjustment")
+                }
+            }
+            OutlinedTextField(
+                value = referenceLevelText,
+                onValueChange = { referenceLevelText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Known reference level · dB SPL") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceMethod,
+                onValueChange = { referenceMethod = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reference method / equipment") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceNotes,
+                onValueChange = { referenceNotes = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reference notes / geometry") },
+            )
+            Button(
+                onClick = {
+                    val level = referenceLevelText.toDoubleOrNull()
+                    referenceMessage =
+                        if (level == null) {
+                            "Enter a numeric reference SPL."
+                        } else {
+                            onCreateReferenceAdjustment(
+                                detail,
+                                level,
+                                referenceMethod,
+                                referenceNotes,
+                            ) ?: "Active reference adjustment stored. SPL remains disabled pending the physical reference gate."
+                        }
+                },
+            ) {
+                Text("Store as active reference")
+            }
+            referenceMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
         }
     }
 }
