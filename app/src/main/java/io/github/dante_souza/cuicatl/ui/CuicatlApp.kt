@@ -650,7 +650,7 @@ private fun HistoryPage(
 
             if (savedSessions.isEmpty()) {
                 Text(
-                    "No saved Phase 1 sessions yet.",
+                    "No saved sessions yet.",
                     color = MaterialTheme.colorScheme.outline,
                 )
             } else {
