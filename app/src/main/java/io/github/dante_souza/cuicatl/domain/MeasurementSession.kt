@@ -7,6 +7,7 @@ data class MeasurementSession(
     val label: String = "",
     val outcome: SessionOutcome? = null,
     val startedAtUtcEpochMillis: Long = 0L,
+    val timezoneOffset: String = "",
     val elapsedMillis: Long = 0L,
     val capturedMillis: Long = 0L,
     val source: String = "",
