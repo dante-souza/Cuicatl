@@ -17,6 +17,7 @@ import io.github.dante_souza.cuicatl.R
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
+import io.github.dante_souza.cuicatl.domain.SessionCommandPolicy
 import io.github.dante_souza.cuicatl.domain.SessionOutcome
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
 import io.github.dante_souza.cuicatl.domain.SessionState
@@ -121,11 +122,7 @@ class MeasurementService : Service() {
         label: String,
         agcRequest: AgcRequest,
     ) {
-        if (
-            runtimeSnapshot.status == SessionRuntimeSnapshot.Status.RUNNING ||
-            runtimeSnapshot.status == SessionRuntimeSnapshot.Status.STARTING ||
-            runtimeSnapshot.status == SessionRuntimeSnapshot.Status.FINALIZING
-        ) {
+        if (!SessionCommandPolicy.acceptsStart(runtimeSnapshot.status)) {
             return
         }
 
@@ -239,7 +236,16 @@ class MeasurementService : Service() {
     }
 
     private fun stopMeasurement() {
-        val activeCapture = capture ?: return
+        val activeCapture = capture
+        if (
+            !SessionCommandPolicy.acceptsStop(
+                status = runtimeSnapshot.status,
+                hasActiveCapture = activeCapture != null,
+            )
+        ) {
+            return
+        }
+
         val current = activeSession
         publish(
             runtimeSnapshot.copy(
@@ -249,7 +255,7 @@ class MeasurementService : Service() {
             ),
         )
         notifyForeground("Finalizing measurement")
-        activeCapture.stop()
+        activeCapture?.stop()
     }
 
     private fun finalizeSession(
