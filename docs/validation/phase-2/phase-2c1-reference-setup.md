@@ -68,3 +68,19 @@ Existing ReferenceAdjustmentTest continues to cover configuration mismatch suppr
 ## Next gate
 
 Phase 2C.2 — physical reference procedure and reference-adjusted SPL activation — requires an actual suitable reference setup. If suitable equipment/reference is unavailable, record SPL activation as blocked and retain the digital A/Z meter.
+
+
+## J8 retention/sanitization validation — 2026-10-09
+
+On-device screenshots confirmed:
+
+- History displays the global **Sanitize** control.
+- Saved-session detail displays **Delete local session** alongside Share CSV.
+- The per-session destructive action requires explicit confirmation and explains cached-export/reference-provenance consequences.
+- Deleting the selected `z_analysis` session removed that session while leaving the other saved sessions visible.
+- The global sanitization confirmation explicitly states that saved session records, cached CSV exports, and the active reference adjustment will be removed, while an active recording is not deleted.
+- Completing global sanitization reported **12 saved session(s)** deleted and left the saved-session list empty.
+
+The empty-state copy was subsequently updated from the stale Phase 1 wording to **No saved sessions yet.**
+
+Retention semantics remain logical deletion rather than a forensic secure-erasure claim.
