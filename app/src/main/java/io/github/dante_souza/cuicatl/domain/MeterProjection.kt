@@ -9,7 +9,7 @@ object MeterProjection {
         // Never silently substitute unweighted data for absent A-weighted data.
         val energy = when (weighting) {
             FrequencyWeighting.A -> frame.weightedMeanSquareFs
-            FrequencyWeighting.Z -> frame.weightedMeanSquareFs ?: frame.meanSquareFs
+            FrequencyWeighting.Z -> frame.meanSquareFs
         }
         return energy?.takeIf { it.isFinite() && it >= 0.0 }
     }
