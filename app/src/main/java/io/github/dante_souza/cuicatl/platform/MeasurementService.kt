@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.SystemClock
 import io.github.dante_souza.cuicatl.MainActivity
 import io.github.dante_souza.cuicatl.R
+import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionOutcome
@@ -77,7 +78,10 @@ class MeasurementService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
-                startMeasurement(label)
+                val agcRequest = intent.getStringExtra(EXTRA_AGC_REQUEST)
+                    ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() }
+                    ?: AgcRequest.DEFAULT
+                startMeasurement(label, agcRequest)
             }
 
             ACTION_STOP -> stopMeasurement()
@@ -113,7 +117,10 @@ class MeasurementService : Service() {
     fun exportSavedSession(sessionId: String): File? =
         repository.loadSession(sessionId)?.let(exporter::export)
 
-    private fun startMeasurement(label: String) {
+    private fun startMeasurement(
+        label: String,
+        agcRequest: AgcRequest,
+    ) {
         if (
             runtimeSnapshot.status == SessionRuntimeSnapshot.Status.RUNNING ||
             runtimeSnapshot.status == SessionRuntimeSnapshot.Status.STARTING ||
@@ -134,6 +141,7 @@ class MeasurementService : Service() {
             label = label.trim().take(MAX_LABEL_LENGTH),
             startedAtUtcEpochMillis = startedAtUtcEpochMillis,
             timezoneOffset = timezoneOffset,
+            agcRequest = agcRequest,
         )
         activeSession = startingSession
         activeStartedElapsedRealtime = SystemClock.elapsedRealtime()
@@ -155,6 +163,7 @@ class MeasurementService : Service() {
         val sessionCapture = AndroidSessionCapture(
             context = this,
             sessionId = sessionId,
+            agcRequest = agcRequest,
             onStarted = { configuration ->
                 val runningSession = startingSession.copy(
                     state = SessionState.RUNNING,
@@ -348,6 +357,7 @@ class MeasurementService : Service() {
         const val ACTION_START = "io.github.dante_souza.cuicatl.action.START_MEASUREMENT"
         const val ACTION_STOP = "io.github.dante_souza.cuicatl.action.STOP_MEASUREMENT"
         const val EXTRA_LABEL = "session_label"
+        const val EXTRA_AGC_REQUEST = "agc_request"
 
         private const val CHANNEL_ID = "cuicatl_measurement"
         private const val NOTIFICATION_ID = 1001
