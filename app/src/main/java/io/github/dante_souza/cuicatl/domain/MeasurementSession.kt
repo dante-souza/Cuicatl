@@ -13,7 +13,7 @@ data class MeasurementSession(
     val source: String = "",
     val sampleRateHz: Int = 0,
     val inputIdentity: String = "",
-    val agcRequest: AgcRequest = AgcRequest.DEFAULT,
+    val agcRequest: AgcRequest? = null,
     val processingState: String = "",
     val frameCount: Long = 0L,
     val interruptionReason: String? = null,
