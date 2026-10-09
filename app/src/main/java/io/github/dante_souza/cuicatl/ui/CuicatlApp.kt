@@ -255,13 +255,23 @@ private fun MeterPage(
                     (current?.clippedSampleCount ?: 0),
             )
             Text(
-                snapshot.message,
+                if (snapshot.clippedFrameCount > 0) {
+                    "Clipping observed in this session: " +
+                        snapshot.clippedFrameCount + " frames · " +
+                        snapshot.clippedSampleCount + " samples"
+                } else {
+                    "Session clipping: none observed"
+                },
                 color =
-                    if ((current?.clippedSampleCount ?: 0) > 0) {
+                    if (snapshot.clippedFrameCount > 0) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.outline
                     },
+            )
+            Text(
+                snapshot.message,
+                color = MaterialTheme.colorScheme.outline,
             )
             Text(
                 "Digital input only. Cuicatl is not displaying calibrated SPL in Phase 1.",
@@ -420,6 +430,8 @@ private fun SavedSessionDetailCard(
     onShare: (SavedSessionDetail) -> Unit,
 ) {
     val session = detail.session
+    val clippedFrames = detail.frames.count { it.clippedSampleCount > 0 }
+    val clippedSamples = detail.frames.sumOf { it.clippedSampleCount.toLong() }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -444,6 +456,20 @@ private fun SavedSessionDetailCard(
             Text("Source: " + session.source)
             Text("Sample rate: " + session.sampleRateHz + " Hz")
             Text("Input: " + session.inputIdentity)
+            Text(
+                if (clippedFrames > 0) {
+                    "Clipping: " + clippedFrames + " frames · " +
+                        clippedSamples + " samples"
+                } else {
+                    "Clipping: none observed"
+                },
+                color =
+                    if (clippedFrames > 0) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+            )
             if (!session.interruptionReason.isNullOrBlank()) {
                 Text(
                     "Interruption: " + session.interruptionReason,
