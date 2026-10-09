@@ -49,6 +49,12 @@ The recovered prefix contains:
 
 The CLIPPED quality flag agrees with clipped_sample_count on the affected rows.
 
+## Recovery elapsed-time correction
+
+This fixture exposed one semantic defect: recovery did not know the actual final elapsed time at process death, but the implementation copied the recovered captured duration into session_elapsed_ms.
+
+That value is not independently observed elapsed time and therefore must not be presented as such. The implementation is corrected so a recovered session leaves elapsed duration unavailable unless it was actually observed during normal finalization. Captured duration remains the valid 46,200 ms readable-prefix coverage.
+
 ## What this fixture proves
 
 The process-kill recovery semantics pass:
