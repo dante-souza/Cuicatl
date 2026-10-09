@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -32,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,7 +80,9 @@ fun CuicatlApp() {
     var frequencyWeighting by rememberSaveable { mutableStateOf(FrequencyWeighting.Z) }
     var snapshot by remember { mutableStateOf(SessionRuntimeSnapshot()) }
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
+    var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
+    val scrollState = rememberScrollState()
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var permissionGranted by remember {
         mutableStateOf(
@@ -104,6 +108,9 @@ fun CuicatlApp() {
             onDispose { }
         } else {
             savedSessions = measurementService.savedSessions()
+            selectedSessionId?.let { selectedId ->
+                selectedDetail = measurementService.loadSavedSession(selectedId)
+            }
             val listener: (SessionRuntimeSnapshot) -> Unit = { updated ->
                 snapshot = updated
                 if (
@@ -140,6 +147,15 @@ fun CuicatlApp() {
         }
     }
 
+    BackHandler(enabled = selectedDetail != null) {
+        selectedDetail = null
+        selectedSessionId = null
+    }
+
+    LaunchedEffect(page, selectedSessionId) {
+        scrollState.scrollTo(0)
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -160,7 +176,7 @@ fun CuicatlApp() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -212,9 +228,13 @@ fun CuicatlApp() {
                         savedSessions = savedSessions,
                         selectedDetail = selectedDetail,
                         onSelect = { session ->
+                            selectedSessionId = session.id
                             selectedDetail = measurementService?.loadSavedSession(session.id)
                         },
-                        onBack = { selectedDetail = null },
+                        onBack = {
+                            selectedDetail = null
+                            selectedSessionId = null
+                        },
                         onShare = { detail ->
                             val file = measurementService?.exportSavedSession(detail.session.id)
                             if (file != null) {
