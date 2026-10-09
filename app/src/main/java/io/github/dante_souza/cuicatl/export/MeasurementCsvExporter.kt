@@ -29,7 +29,7 @@ class MeasurementCsvExporter(
         )
 
         target.bufferedWriter(Charsets.UTF_8).use { writer ->
-            writer.appendLine(ProvisionalExportFields.candidateColumns.joinToString(","))
+            writer.appendLine(CsvSchemaV1.columns.joinToString(","))
 
             detail.frames.forEach { frame ->
                 val intervalUtc = DateTimeFormatter.ISO_INSTANT.format(
@@ -38,7 +38,7 @@ class MeasurementCsvExporter(
                     ),
                 )
                 val values = listOf(
-                    "phase1-draft",
+                    CsvSchemaV1.VERSION,
                     session.id,
                     frame.sequence.toString(),
                     CsvFormat.spreadsheetSafeText(session.label),
@@ -79,8 +79,8 @@ class MeasurementCsvExporter(
                     session.interruptionReason.orEmpty(),
                 )
 
-                check(values.size == ProvisionalExportFields.candidateColumns.size) {
-                    "CSV row does not match provisional column count"
+                check(values.size == CsvSchemaV1.columns.size) {
+                    "CSV row does not match schema 1 column count"
                 }
                 writer.appendLine(values.joinToString(",") { CsvFormat.field(it) })
             }
