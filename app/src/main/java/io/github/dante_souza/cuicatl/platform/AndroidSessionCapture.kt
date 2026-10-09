@@ -355,11 +355,7 @@ class AndroidSessionCapture(
                 states += describeAndApply(
                     name = "AGC",
                     effect = effect,
-                    requestedEnabled = when (request) {
-                        AgcRequest.DEFAULT -> null
-                        AgcRequest.FORCE_OFF -> false
-                        AgcRequest.FORCE_ON -> true
-                    },
+                    requestedEnabled = request.targetEnabled(),
                 )
                 return effect
             }
