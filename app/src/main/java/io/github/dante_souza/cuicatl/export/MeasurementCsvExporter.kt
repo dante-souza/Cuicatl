@@ -24,6 +24,9 @@ class MeasurementCsvExporter(
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         val appVersion = packageInfo.versionName ?: "unknown"
         val session = detail.session
+        val sessionStartUtc = DateTimeFormatter.ISO_INSTANT.format(
+            Instant.ofEpochMilli(session.startedAtUtcEpochMillis),
+        )
 
         target.bufferedWriter(Charsets.UTF_8).use { writer ->
             writer.appendLine(ProvisionalExportFields.candidateColumns.joinToString(","))
@@ -43,6 +46,8 @@ class MeasurementCsvExporter(
                     Build.MODEL,
                     Build.VERSION.RELEASE,
                     session.outcome?.name.orEmpty(),
+                    sessionStartUtc,
+                    session.timezoneOffset,
                     intervalUtc,
                     frame.elapsedStartMillis.toString(),
                     frame.durationMillis.toString(),
