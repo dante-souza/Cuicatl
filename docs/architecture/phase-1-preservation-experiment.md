@@ -2,13 +2,13 @@
 
 Date: 2026-10-08.
 
-Status: **in progress**. This document defines the experiment; it does not yet claim that the selected preservation design has passed the J8 recovery gate.
+Status: **closed for Phase 1**. Candidate A passed the tested J8 recovery gate and was selected. The original requirement to implement a Room/SQLite candidate was revised after evidence showed no unmet Phase 1 requirement that justified a second persistence stack.
 
 ## Why this experiment exists
 
 Phase 1 must preserve a useful measurement record when the UI changes pages, the Activity is recreated, or the process is interrupted. The UI is not the authoritative data store. CSV remains a portable export, not the live persistence mechanism.
 
-The approved plan requires an explicit comparison between an append-oriented design and a SQLite/Room design against the same recovery checks before the storage choice is frozen.
+The original planning revision required an implemented append-vs-Room/SQLite comparison before freezing storage. Phase 1 evidence changed that decision: the append candidate passed the demonstrated normal-stop, reopen, export, process-recovery, and preservation requirements. The storage decision record therefore selects Candidate A and defers Room/SQLite until a concrete adoption trigger appears.
 
 ## Candidate A — append-oriented session directory
 
@@ -24,28 +24,29 @@ The first runnable candidate uses one app-private directory per session:
 
 A session left in RUNNING state is converted on next service creation to a saved RECOVERED outcome with interruption reason process_recovery. This state means a persisted prefix was recovered; it must never imply that microphone capture continued while the process was absent.
 
-### Candidate-A preservation hypothesis
+### Candidate-A observed result
 
-- Activity/page changes: no measurement loss because the foreground service owns capture and persistence.
-- Normal Stop: all completed and partial final frames are synced before metadata finalization.
-- Abrupt process death: all complete readable frame lines already delivered to the kernel should remain readable; the explicit durability target for storage/power-loss testing is at most the most recent 10 frames (about 1 second) between sync() calls.
-- Torn final write: the incomplete final line is rejected rather than interpreted as silence or a valid measurement.
+The J8 evidence established:
 
-These are hypotheses until exercised on the J8.
+- normal Stop produces a reopenable saved session;
+- completed and recovered exports reconstruct contiguous measurement rows;
+- a forced process death produces RECOVERED / process_recovery rather than a false completed session;
+- recovered data form a readable prefix with valid numerical/timing semantics;
+- an instrumented recovery run observed 446 complete rows immediately before the helper issued force-stop and 449 complete rows after recovery, with 0 known loss of complete rows from the measured pre-kill snapshot.
 
-## Candidate B — SQLite / Room comparison
+The three additional rows completed between the helper snapshot and the actual force-stop command. This is not negative loss.
 
-The comparison candidate is a conventional session table plus frame table, with frame batches committed transactionally. It must be judged using the same checks:
+The result is specific to the tested Android process-death path. Sudden power loss, arbitrary filesystem failure, and an in-flight partial write remain separate failure modes.
 
-1. normal Stop and reopen;
-2. forced process death during capture;
-3. readable prefix / row count after recovery;
-4. storage-full or write-error behavior;
-5. export reconstruction;
-6. implementation and migration burden;
-7. measured write cost on the J8.
+## Candidate B — SQLite / Room disposition
 
-The database candidate is not automatically preferred because it provides transactions, and the append candidate is not automatically preferred because it is smaller. The Phase 1 decision record will select the smallest implementation that actually passes the shared acceptance checks.
+A Room/SQLite implementation was **not built** for Phase 1.
+
+After Candidate A passed the required user workflow and process-recovery tests, there was no remaining Phase 1 requirement that needed relational persistence. Building Candidate B at that point would have introduced a second storage stack, migration/schema lifecycle work, and another recovery implementation without resolving an observed problem.
+
+Room/SQLite remains a deferred alternative rather than a rejected technology. Reconsider it if Cuicatl later requires indexed multidimensional queries, relational cross-session metadata, frequent in-place updates, transactionally coupled record types, or file-library performance that cannot meet measured needs.
+
+The accepted decision and future backup direction are recorded in `phase-1-storage-decision-2026-10-09.md`.
 
 ## J8 execution checklist
 
@@ -61,7 +62,7 @@ For Candidate A:
 8. Record recovered frame count, captured duration, last sequence, and the difference from the pre-kill observation.
 9. Exercise a storage-write failure if a safe reproducible method is available; otherwise record it as unexercised rather than simulating success.
 
-Run the equivalent persistence/recovery checks for the SQLite candidate before freezing the storage decision.
+Room/SQLite is deferred under the accepted storage decision; no duplicate recovery run is required until a concrete database adoption trigger reopens the decision.
 
 ## Evidence required to close the experiment
 
@@ -71,6 +72,8 @@ Run the equivalent persistence/recovery checks for the SQLite candidate before f
 - process-kill recovery fixture;
 - exported CSV fixture;
 - observed preservation/loss bound;
-- Candidate A vs Candidate B decision with rationale.
+- Candidate A vs Candidate B disposition with rationale.
 
-Schema version 1 is **not** frozen by this experiment. It is frozen only after a real Phase 1 exported CSV is independently inspected.
+Storage-write failure was not deliberately induced during this experiment because no safe, reproducible J8 method was established that would avoid unrelated device-state damage. This remains explicitly unexercised rather than being represented as a passed case.
+
+Schema version 1 was subsequently frozen only after multiple real Phase 1 exports—including a RECOVERED fixture—were independently inspected. See `../architecture/csv-schema-v1.md`.
