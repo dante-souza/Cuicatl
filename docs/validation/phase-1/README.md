@@ -1,6 +1,6 @@
 # Phase 1 — usable session, preservation, and export
 
-Status: **closure in progress** on feature/phase-1-usable-session-export.
+Status: **complete / freeze candidate accepted** on feature/phase-1-usable-session-export.
 
 Planning gate: capture a labeled event on the J8, inspect its history, stop and reopen it, export/share a CSV, and interpret it externally. Finalize schema 1 only after independent inspection of the real export fixture.
 
@@ -45,7 +45,7 @@ Boundaries deliberately retained:
 - [x] Permission denial produces no capture; explicit denial UI verified on the J8.
 - [x] Repeated Start is rejected while STARTING/RUNNING/FINALIZING by a unit-tested service command policy; no competing session is created.
 - [x] Repeated Stop is a unit-tested no-op once no active capture remains; repeated stop during finalization is safe.
-- [ ] Meter ↔ History switching preserves session ID, frame sequence, and capture.
+- [x] Meter ↔ History switching preserves session ID, frame sequence, and capture; instrumented J8 run advanced from 3587 to 3662 to 3753 frames with the same session ID.
 - [x] Activity recreation preserves the service-owned session; instrumented rotation check kept the same session ID while frames advanced.
 - [x] Normal Stop produces a reopenable saved session.
 - [x] Saved detail history agrees with persisted frames for the first J8 fixture.
