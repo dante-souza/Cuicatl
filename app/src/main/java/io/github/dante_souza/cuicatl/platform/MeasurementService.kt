@@ -49,6 +49,12 @@ class MeasurementService : Service() {
     @Volatile
     private var activeStartedElapsedRealtime = 0L
 
+    @Volatile
+    private var clippedFrameCount = 0L
+
+    @Volatile
+    private var clippedSampleCount = 0L
+
     override fun onCreate() {
         super.onCreate()
         repository = SessionRepository(this)
@@ -123,6 +129,8 @@ class MeasurementService : Service() {
         )
         activeSession = startingSession
         activeStartedElapsedRealtime = SystemClock.elapsedRealtime()
+        clippedFrameCount = 0L
+        clippedSampleCount = 0L
         publish(
             SessionRuntimeSnapshot(
                 status = SessionRuntimeSnapshot.Status.STARTING,
@@ -172,6 +180,11 @@ class MeasurementService : Service() {
                 )
                 activeSession = updatedSession
 
+                if (frame.clippedSampleCount > 0) {
+                    clippedFrameCount += 1
+                    clippedSampleCount += frame.clippedSampleCount.toLong()
+                }
+
                 val prior = runtimeSnapshot.history
                 val history = (prior + frame).takeLast(MAX_LIVE_HISTORY_FRAMES)
                 publish(
@@ -180,12 +193,9 @@ class MeasurementService : Service() {
                         activeSession = updatedSession,
                         currentFrame = frame,
                         history = history,
-                        message =
-                            if (frame.clippedSampleCount > 0) {
-                                "Clipping detected in the latest 100 ms frame."
-                            } else {
-                                "Measurement running. Values are digital dBFS, not SPL."
-                            },
+                        clippedFrameCount = clippedFrameCount,
+                        clippedSampleCount = clippedSampleCount,
+                        message = "Measurement running. Values are digital dBFS, not SPL.",
                     ),
                 )
             },
