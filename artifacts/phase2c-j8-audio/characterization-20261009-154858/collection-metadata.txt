@@ -1,0 +1,6 @@
+﻿collected_at_local=2026-10-09T15:48:58.8709766-03:00
+serial=38c19745
+model=SM-J810M
+product=j8y18lte
+collection_mode=read_only
+expected_state=Cuicatl actively recording during collection
