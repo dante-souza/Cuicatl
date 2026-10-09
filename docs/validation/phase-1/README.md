@@ -28,16 +28,17 @@ Implemented in the first Phase 1 slice:
 - append storage has passed process-kill recovery semantics, readable-prefix recovery, and one instrumented J8 run with 0 loss of complete rows visible at the pre-kill snapshot;
 - append-oriented app-private storage is selected; Room/SQLite is deferred with explicit adoption triggers;
 - modern Android service/permission coverage is not established by the J8;
+- the J8 VOICE_RECOGNITION path shows an observed background-noise/effective-gain adaptation that must be characterized before Phase 2 can treat it as a stable absolute acoustic reference;
 - no SPL, calibration, A/Z weighting, Leq, Fast, or Slow values are displayed;
 - no acoustic accuracy claim is made.
 
 ## Phase 1 gate checklist
 
-- [ ] Permission denial produces no capture.
+- [x] Permission denial produces no capture; explicit denial UI verified on the J8.
 - [ ] Repeated Start does not create competing sessions.
 - [ ] Repeated Stop is harmless.
 - [ ] Meter ↔ History switching preserves session ID, frame sequence, and capture.
-- [ ] Activity recreation preserves the service-owned session.
+- [x] Activity recreation preserves the service-owned session; instrumented rotation check kept the same session ID while frames advanced.
 - [x] Normal Stop produces a reopenable saved session.
 - [x] Saved detail history agrees with persisted frames for the first J8 fixture.
 - [x] CSV share works through Android content URI permissions on the first J8 fixture.
@@ -49,8 +50,8 @@ Implemented in the first Phase 1 slice:
 - [x] Persistence decision is closed: append-oriented Candidate A selected from tested evidence; Room/SQLite deferred with explicit adoption triggers.
 - [x] Storage-write failure is explicitly recorded as unexercised because no safe reproducible J8 fault-injection method was established.
 - [ ] Input change/interruption behavior is recorded.
-- [ ] Screen-off behavior is tested for the implemented foreground-service path.
-- [ ] First acoustic task/setting is recorded before final user acceptance.
+- [x] Screen-off behavior is tested: persisted frames advanced with the same active session while the J8 screen was off.
+- [x] First acoustic task/setting is recorded: stationary room fan/background after foreground sound falls silent, used as an input-stability observation rather than SPL validation.
 - [x] Real exported fixtures are independently inspected externally; the second fixture closes the timing-provenance correction.
 - [x] CSV schema 1 is finalized after completed and RECOVERED fixtures were independently inspected.
 
