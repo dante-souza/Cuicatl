@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
@@ -73,6 +74,7 @@ fun CuicatlApp() {
     var page by rememberSaveable { mutableStateOf(AnalyzerPage.METER) }
     var sessionLabel by rememberSaveable { mutableStateOf("") }
     var agcRequest by rememberSaveable { mutableStateOf(AgcRequest.DEFAULT) }
+    var frequencyWeighting by rememberSaveable { mutableStateOf(FrequencyWeighting.Z) }
     var snapshot by remember { mutableStateOf(SessionRuntimeSnapshot()) }
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
@@ -122,6 +124,7 @@ fun CuicatlApp() {
             action = MeasurementService.ACTION_START
             putExtra(MeasurementService.EXTRA_LABEL, sessionLabel)
             putExtra(MeasurementService.EXTRA_AGC_REQUEST, agcRequest.name)
+            putExtra(MeasurementService.EXTRA_FREQUENCY_WEIGHTING, frequencyWeighting.name)
         }
         ContextCompat.startForegroundService(context, intent)
     }
@@ -166,7 +169,7 @@ fun CuicatlApp() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Phase 1 · usable session + preservation + export",
+                text = "Phase 2 · digital A/Z meter (uncalibrated)",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -177,6 +180,8 @@ fun CuicatlApp() {
                         snapshot = snapshot,
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
+                        frequencyWeighting = frequencyWeighting,
+                        onFrequencyWeightingChange = { frequencyWeighting = it },
                         agcRequest = agcRequest,
                         onAgcRequestChange = { agcRequest = it },
                         agcAvailable = agcAvailable,
@@ -227,6 +232,8 @@ private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
+    frequencyWeighting: FrequencyWeighting,
+    onFrequencyWeightingChange: (FrequencyWeighting) -> Unit,
     agcRequest: AgcRequest,
     onAgcRequestChange: (AgcRequest) -> Unit,
     agcAvailable: Boolean,
@@ -242,6 +249,7 @@ private fun MeterPage(
             snapshot.status == SessionRuntimeSnapshot.Status.FINALIZING
     val current = snapshot.currentFrame
     val session = snapshot.activeSession
+    val effectiveWeighting = if (isActive) session?.frequencyWeighting ?: frequencyWeighting else frequencyWeighting
     val effectiveAgcRequest =
         if (isActive) session?.agcRequest ?: agcRequest else agcRequest
 
@@ -250,13 +258,18 @@ private fun MeterPage(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Digital level", style = MaterialTheme.typography.titleLarge)
+            Text("Digital level · " + effectiveWeighting.name + " weighting", style = MaterialTheme.typography.titleLarge)
             Text(
-                text = formatDb(current?.rmsDbfs),
+                text = formatDb(current?.weightedRmsDbfs ?: current?.rmsDbfs),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text("RMS · dBFS")
+            Text("Weighted RMS · dBFS")
+            snapshot.levelStatistics?.let { statistics ->
+                Text("Minimum: " + formatDb(statistics.minimumDbfs))
+                Text("Maximum: " + formatDb(statistics.maximumDbfs))
+                Text("Leq: " + formatDb(statistics.leqDbfs))
+            }
             Text("Sample peak: " + formatDb(current?.samplePeakDbfs))
             Text("Elapsed: " + formatDuration(session?.elapsedMillis ?: 0L))
             Text("Captured: " + formatDuration(session?.capturedMillis ?: 0L))
@@ -293,7 +306,7 @@ private fun MeterPage(
                 color = MaterialTheme.colorScheme.outline,
             )
             Text(
-                "Digital input only. Cuicatl is not displaying calibrated SPL in Phase 1.",
+                "Digital A/Z weighting only. Values are not calibrated SPL.",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -331,6 +344,17 @@ private fun MeterPage(
                 singleLine = true,
             )
 
+            Text("Frequency weighting", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FrequencyWeighting.entries.forEach { choice ->
+                    if (effectiveWeighting == choice) {
+                        Button(onClick = { onFrequencyWeightingChange(choice) }, enabled = !isActive) { Text(choice.name) }
+                    } else {
+                        TextButton(onClick = { onFrequencyWeightingChange(choice) }, enabled = !isActive) { Text(choice.name) }
+                    }
+                }
+            }
+            Text("Weighting is fixed from Start through Stop.", style = MaterialTheme.typography.bodySmall)
             Text(
                 "Android AGC",
                 style = MaterialTheme.typography.titleMedium,

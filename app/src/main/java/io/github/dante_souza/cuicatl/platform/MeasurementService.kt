@@ -14,6 +14,8 @@ import android.os.Handler
 import android.os.SystemClock
 import io.github.dante_souza.cuicatl.MainActivity
 import io.github.dante_souza.cuicatl.R
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.LevelStatisticsAccumulator
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
@@ -54,6 +56,8 @@ class MeasurementService : Service() {
     private var activeStartedElapsedRealtime = 0L
 
     @Volatile
+    private var levelAccumulator = LevelStatisticsAccumulator()
+
     private var clippedFrameCount = 0L
 
     @Volatile
@@ -82,7 +86,10 @@ class MeasurementService : Service() {
                 val agcRequest = intent.getStringExtra(EXTRA_AGC_REQUEST)
                     ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() }
                     ?: AgcRequest.DEFAULT
-                startMeasurement(label, agcRequest)
+                val weighting = intent.getStringExtra(EXTRA_FREQUENCY_WEIGHTING)
+                    ?.let { runCatching { FrequencyWeighting.valueOf(it) }.getOrNull() }
+                    ?: FrequencyWeighting.Z
+                startMeasurement(label, agcRequest, weighting)
             }
 
             ACTION_STOP -> stopMeasurement()
@@ -121,6 +128,7 @@ class MeasurementService : Service() {
     private fun startMeasurement(
         label: String,
         agcRequest: AgcRequest,
+        frequencyWeighting: FrequencyWeighting,
     ) {
         if (!SessionCommandPolicy.acceptsStart(runtimeSnapshot.status)) {
             return
@@ -139,9 +147,11 @@ class MeasurementService : Service() {
             startedAtUtcEpochMillis = startedAtUtcEpochMillis,
             timezoneOffset = timezoneOffset,
             agcRequest = agcRequest,
+            frequencyWeighting = frequencyWeighting,
         )
         activeSession = startingSession
         activeStartedElapsedRealtime = SystemClock.elapsedRealtime()
+        levelAccumulator = LevelStatisticsAccumulator()
         clippedFrameCount = 0L
         clippedSampleCount = 0L
         publish(
@@ -161,6 +171,7 @@ class MeasurementService : Service() {
             context = this,
             sessionId = sessionId,
             agcRequest = agcRequest,
+            frequencyWeighting = frequencyWeighting,
             onStarted = { configuration ->
                 val runningSession = startingSession.copy(
                     state = SessionState.RUNNING,
@@ -183,6 +194,10 @@ class MeasurementService : Service() {
             onFrame = { frame ->
                 val activeWriter = writer ?: error("Session writer was not initialized")
                 activeWriter.append(frame)
+                levelAccumulator.addInterval(
+                    frame.weightedMeanSquareFs ?: frame.meanSquareFs,
+                    frame.durationMillis,
+                )
 
                 val elapsed = SystemClock.elapsedRealtime() - activeStartedElapsedRealtime
                 val captured = frame.elapsedStartMillis + frame.durationMillis
@@ -207,6 +222,7 @@ class MeasurementService : Service() {
                         activeSession = updatedSession,
                         currentFrame = frame,
                         history = history,
+                        levelStatistics = levelAccumulator.snapshot(),
                         clippedFrameCount = clippedFrameCount,
                         clippedSampleCount = clippedSampleCount,
                         message = "Measurement running. Values are digital dBFS, not SPL.",
@@ -364,6 +380,7 @@ class MeasurementService : Service() {
         const val ACTION_STOP = "io.github.dante_souza.cuicatl.action.STOP_MEASUREMENT"
         const val EXTRA_LABEL = "session_label"
         const val EXTRA_AGC_REQUEST = "agc_request"
+        const val EXTRA_FREQUENCY_WEIGHTING = "frequency_weighting"
 
         private const val CHANNEL_ID = "cuicatl_measurement"
         private const val NOTIFICATION_ID = 1001
