@@ -18,8 +18,8 @@ function Capture-Adb {
     )
 
     $target = Join-Path $out $Name
-    # Use cmd.exe so Android stderr is captured into the evidence file too.
-    & adb -s $ExpectedSerial shell "$ShellCommand 2>&1" |
+    # Capture both adb stdout and stderr on the host. Keep Android-side commands read-only.
+    & adb -s $ExpectedSerial shell $ShellCommand 2>&1 |
         Out-File -FilePath $target -Encoding utf8
 }
 
@@ -38,13 +38,23 @@ $product = (& adb -s $ExpectedSerial shell getprop ro.product.device).Trim()
 Capture-Adb 'audio-policy-live.txt' 'dumpsys media.audio_policy'
 Capture-Adb 'audio-flinger-live.txt' 'dumpsys media.audio_flinger'
 Capture-Adb 'getprop-live.txt' 'getprop'
-Capture-Adb 'tinymix-live.txt' 'command -v tinymix >/dev/null && tinymix || echo tinymix_not_available'
+
+Capture-Adb 'tinymix-live.txt' 'if command -v tinymix >/dev/null 2>&1; then echo tinymix_present; command -v tinymix; tinymix; rc=$?; echo tinymix_exit_code=$rc; else echo tinymix_not_installed; fi'
+
 Capture-Adb 'asound-cards-live.txt' 'cat /proc/asound/cards'
 Capture-Adb 'asound-pcm-live.txt' 'cat /proc/asound/pcm'
-Capture-Adb 'asoc-debugfs-live.txt' 'ls -la /sys/kernel/debug/asoc; echo ---codecs---; cat /sys/kernel/debug/asoc/codecs; echo ---dais---; cat /sys/kernel/debug/asoc/dais; echo ---platforms---; cat /sys/kernel/debug/asoc/platforms'
-Capture-Adb 'sysfs-audio-devices-live.txt' 'for d in /sys/bus/platform/devices/* /sys/bus/spmi/devices/*; do n=$(basename "$d"); echo "$n"; done | grep -Ei "audio|codec|wcd|pm8953|msm8953|sound|snd|qcom"'
+
+# Samsung blocks directory listing here on this stock build, but known ASoC files are readable.
+Capture-Adb 'asoc-debugfs-live.txt' 'echo ---codecs---; cat /sys/kernel/debug/asoc/codecs; echo ---dais---; cat /sys/kernel/debug/asoc/dais; echo ---platforms---; cat /sys/kernel/debug/asoc/platforms; echo ---cards---; cat /sys/kernel/debug/asoc/cards'
+
+# Do not pipe through grep on-device: adb/shell quoting can split the alternation expression.
+# Preserve full device-name inventories and filter them during analysis.
+Capture-Adb 'sysfs-platform-devices-live.txt' 'ls -1 /sys/bus/platform/devices'
+Capture-Adb 'sysfs-spmi-devices-live.txt' 'ls -1 /sys/bus/spmi/devices'
+Capture-Adb 'sys-class-sound-live.txt' 'for f in /sys/class/sound/card*/id /sys/class/sound/card*/device/uevent /sys/class/sound/card*/uevent; do echo ==== $f ====; cat $f; done'
+
 Capture-Adb 'proc-device-tree-compatible.txt' 'cat /proc/device-tree/compatible'
-Capture-Adb 'vendor-audio-files-live.txt' 'ls -la /vendor/etc/*audio* /vendor/etc/*mixer* 2>/dev/null'
+Capture-Adb 'vendor-audio-files-live.txt' 'ls -la /vendor/etc/*audio* /vendor/etc/*mixer*'
 
 $hashLines = Get-ChildItem -File $out |
     Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
