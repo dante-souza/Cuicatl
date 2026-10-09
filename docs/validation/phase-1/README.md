@@ -19,25 +19,32 @@ Implemented in the first Phase 1 slice:
 - app-private append-oriented session candidate;
 - readable-prefix recovery of interrupted sessions;
 - saved-session list/detail/reopen path;
-- directly shareable phase1-draft CSV;
+- directly shareable CSV Schema 1;
 - spreadsheet formula-prefix protection for user-provided session labels.
 
-## Deliberately not claimed yet
+## Validated decisions and remaining boundaries
 
-- CSV schema version 1 is frozen after independent completed/recovered export inspection;
-- append storage has passed process-kill recovery semantics, readable-prefix recovery, and one instrumented J8 run with 0 loss of complete rows visible at the pre-kill snapshot;
+Validated in Phase 1:
+
+- CSV Schema 1 is frozen after independent completed/recovered export inspection;
+- append storage passed process-kill recovery semantics, readable-prefix recovery, and one instrumented J8 run with 0 loss of complete rows visible at the pre-kill snapshot;
 - append-oriented app-private storage is selected; Room/SQLite is deferred with explicit adoption triggers;
-- modern Android service/permission coverage is not established by the J8;
-- the J8 VOICE_RECOGNITION path shows an observed background-noise/effective-gain adaptation that must be characterized before Phase 2 can treat it as a stable absolute acoustic reference;
-- pre-session Android AGC control is implemented as DEFAULT / FORCE_OFF / FORCE_ON where supported; requested and actual effect state are persisted in session metadata and Schema 1 processing_state; the J8 DEFAULT fan fixture confirms AGC unavailable, NS/AEC disabled, and a temporary ~1.7 dB post-foreground background elevation of unknown layer;
+- pre-session Android AGC control is implemented as DEFAULT / FORCE_OFF / FORCE_ON where supported, with requested and actual effect state preserved in session provenance;
+- the J8 DEFAULT fan fixture confirms standard Android AGC unavailable, NS/AEC disabled, and a temporary ~1.7 dB post-foreground background elevation of unknown layer.
+
+Boundaries deliberately retained:
+
+- modern Android service/permission coverage beyond the Android 10 J8 is not established by this device campaign;
+- the J8 VOICE_RECOGNITION path is not proven to have a completely stable absolute gain path;
+- physical input-route hot-swap behavior is implemented defensively but not device-exercised because no alternate input fixture was supplied;
 - no SPL, calibration, A/Z weighting, Leq, Fast, or Slow values are displayed;
 - no acoustic accuracy claim is made.
 
 ## Phase 1 gate checklist
 
 - [x] Permission denial produces no capture; explicit denial UI verified on the J8.
-- [ ] Repeated Start does not create competing sessions.
-- [ ] Repeated Stop is harmless.
+- [x] Repeated Start is rejected while STARTING/RUNNING/FINALIZING by a unit-tested service command policy; no competing session is created.
+- [x] Repeated Stop is a unit-tested no-op once no active capture remains; repeated stop during finalization is safe.
 - [ ] Meter ↔ History switching preserves session ID, frame sequence, and capture.
 - [x] Activity recreation preserves the service-owned session; instrumented rotation check kept the same session ID while frames advanced.
 - [x] Normal Stop produces a reopenable saved session.
@@ -50,7 +57,7 @@ Implemented in the first Phase 1 slice:
 - [x] Observed J8 process-death preservation bound is recorded: 446 complete rows visible pre-kill, 449 recovered, 0 known complete-row loss.
 - [x] Persistence decision is closed: append-oriented Candidate A selected from tested evidence; Room/SQLite deferred with explicit adoption triggers.
 - [x] Storage-write failure is explicitly recorded as unexercised because no safe reproducible J8 fault-injection method was established.
-- [ ] Input change/interruption behavior is recorded.
+- [x] Input route-change behavior is recorded: detected route changes interrupt rather than mix inputs; physical hot-swap remains explicitly unexercised.
 - [x] Screen-off behavior is tested: persisted frames advanced with the same active session while the J8 screen was off.
 - [x] First acoustic task/setting is recorded: stationary room fan/background after foreground sound falls silent, used as an input-stability observation rather than SPL validation.
 - [x] Real exported fixtures are independently inspected externally; the second fixture closes the timing-provenance correction.
