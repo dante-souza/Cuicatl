@@ -46,6 +46,26 @@ Breaking changes require a new schema version.
 
 Missing time is never converted to zero duration.
 
+## Processing-state semantics
+
+`processing_state` carries the capture-processing provenance observed for the session without adding new Schema 1 columns.
+
+For sessions created after the Phase 1 AGC-control addition it includes:
+
+- the requested AGC mode (`DEFAULT`, `FORCE_OFF`, or `FORCE_ON`);
+- standard Android AGC availability/attach/control state;
+- enabled state before the request;
+- apply result;
+- enabled state after the request;
+- corresponding Phase 1 NS/AEC Off-request audit;
+- `vendor_or_hardware_processing=unknown`.
+
+`DEFAULT` means observe the standard Android AGC effect without requesting a state change. `FORCE_OFF` and `FORCE_ON` are meaningful only when the effect is available and Cuicatl has control.
+
+The field describes the standard Android AudioEffect layer only. It must not be interpreted as proof that vendor/HAL/analog microphone gain or other processing is absent.
+
+Older Schema 1 exports may contain the earlier processing-state representation and do not acquire retroactive AGC-request provenance.
+
 ## Digital measurement semantics
 
 For normalized PCM16 samples under the established Phase 0/1 convention:
