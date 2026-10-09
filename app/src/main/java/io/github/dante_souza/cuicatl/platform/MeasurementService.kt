@@ -22,6 +22,8 @@ import io.github.dante_souza.cuicatl.domain.SessionState
 import io.github.dante_souza.cuicatl.export.MeasurementCsvExporter
 import io.github.dante_souza.cuicatl.persistence.SessionRepository
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -121,11 +123,17 @@ class MeasurementService : Service() {
         }
 
         val sessionId = UUID.randomUUID().toString()
+        val startedAtUtcEpochMillis = System.currentTimeMillis()
+        val timezoneOffset = ZoneId.systemDefault()
+            .rules
+            .getOffset(Instant.ofEpochMilli(startedAtUtcEpochMillis))
+            .id
         val startingSession = MeasurementSession(
             id = sessionId,
             state = SessionState.STARTING,
             label = label.trim().take(MAX_LABEL_LENGTH),
-            startedAtUtcEpochMillis = System.currentTimeMillis(),
+            startedAtUtcEpochMillis = startedAtUtcEpochMillis,
+            timezoneOffset = timezoneOffset,
         )
         activeSession = startingSession
         activeStartedElapsedRealtime = SystemClock.elapsedRealtime()
