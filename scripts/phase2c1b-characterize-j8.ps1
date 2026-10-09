@@ -119,7 +119,7 @@ Capture-Adb 'asound-pcm-live.txt' 'cat /proc/asound/pcm'
 
 # Preserve the stock shell restriction as evidence, then inventory ASoC debugfs with root when available.
 Capture-Adb 'asoc-debugfs-shell-access-live.txt' 'ls -la /sys/kernel/debug/asoc; rc=$?; echo asoc_ls_exit_code=$rc'
-Capture-Adb 'asoc-debugfs-live.txt' 'echo ---root-listing---; ls -la /sys/kernel/debug/asoc; echo ---files-depth-2---; for f in /sys/kernel/debug/asoc/* /sys/kernel/debug/asoc/*/*; do if [ -f "$f" ]; then echo "$f"; fi; done; echo ---card-directories---; for d in /sys/kernel/debug/asoc/*; do if [ -d "$d" ]; then echo ==== "$d" ====; ls -la "$d"; fi; done; echo ---codecs---; cat /sys/kernel/debug/asoc/codecs; echo ---dais---; cat /sys/kernel/debug/asoc/dais' -PreferRoot
+Capture-Adb 'asoc-debugfs-live.txt' 'echo ---root-listing---; ls -la /sys/kernel/debug/asoc; echo ---files-depth-2---; find /sys/kernel/debug/asoc -maxdepth 2 -type f; echo ---card-directories---; ls -la /sys/kernel/debug/asoc/*/; echo ---codecs---; cat /sys/kernel/debug/asoc/codecs; echo ---dais---; cat /sys/kernel/debug/asoc/dais' -PreferRoot
 
 # Do not pipe through grep on-device: adb/shell quoting can split alternation expressions.
 # Preserve full device-name inventories and filter them during analysis.
