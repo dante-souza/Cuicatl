@@ -95,13 +95,30 @@ class AndroidSessionCapture(
             val rate = active.sampleRate
             val intervalSamples = maxOf(1, rate / 10)
             val buffer = ShortArray(maxOf(1024, intervalSamples))
+            var expectedRouteId = active.routedDevice?.id
+            var expectedRouteIdentity = describeRoute(active.routedDevice)
             val configuration = CaptureConfiguration(
                 source = sourceName(active.audioSource),
                 sampleRateHz = rate,
-                inputIdentity = describeRoute(active.routedDevice),
+                inputIdentity = expectedRouteIdentity,
                 processingState = processingAvailability(),
             )
             onStarted(configuration)
+
+            fun ensureRouteUnchanged() {
+                val routedDevice = active.routedDevice ?: return
+                if (expectedRouteId == null) {
+                    expectedRouteId = routedDevice.id
+                    expectedRouteIdentity = describeRoute(routedDevice)
+                    return
+                }
+                if (routedDevice.id != expectedRouteId) {
+                    error(
+                        "Input route changed during capture: " +
+                            expectedRouteIdentity + " -> " + describeRoute(routedDevice),
+                    )
+                }
+            }
 
             fun emitFrame() {
                 if (intervalSampleCount <= 0) return
@@ -155,6 +172,10 @@ class AndroidSessionCapture(
                     error("AudioRecord.read failed with code " + read)
                 }
                 if (read == 0) continue
+
+                // A Phase 1 session has one fixed input configuration.
+                // Reject a detected route change before consuming the newly read block.
+                ensureRouteUnchanged()
 
                 for (index in 0 until read) {
                     val raw = buffer[index]
