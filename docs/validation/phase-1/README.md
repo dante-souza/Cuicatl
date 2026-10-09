@@ -38,12 +38,12 @@ Implemented in the first Phase 1 slice:
 - [ ] Repeated Stop is harmless.
 - [ ] Meter ↔ History switching preserves session ID, frame sequence, and capture.
 - [ ] Activity recreation preserves the service-owned session.
-- [ ] Normal Stop produces a reopenable saved session.
-- [ ] Saved detail history agrees with persisted frames.
-- [ ] CSV share works through Android content URI permissions.
-- [ ] Exported row count and sequence are independently checked.
-- [ ] Exported RMS/peak values are independently spot-checked.
-- [ ] Clipping count/flag is visible in a deliberately clipped fixture.
+- [x] Normal Stop produces a reopenable saved session.
+- [x] Saved detail history agrees with persisted frames for the first J8 fixture.
+- [x] CSV share works through Android content URI permissions on the first J8 fixture.
+- [x] Exported row count and sequence are independently checked (1,547 rows; sequence 0–1,546 contiguous).
+- [x] Exported RMS/peak values are independently recalculated and consistent with the digital definitions.
+- [x] Clipping count/flag is present in the first J8 fixture; 130 clipped frames / 83,349 endpoint samples were independently counted.
 - [ ] Process death produces a recovered/interrupted record, never a false continuous session.
 - [ ] Observed preservation/loss bound is recorded.
 - [ ] Append vs SQLite/Room comparison is closed with evidence.
