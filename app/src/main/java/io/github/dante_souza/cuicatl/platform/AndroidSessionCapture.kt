@@ -72,6 +72,7 @@ class AndroidSessionCapture(
     @SuppressLint("MissingPermission")
     private fun runCapture() {
         var record: AudioRecord? = null
+        var preprocessorAudit: CapturePreprocessorAudit? = null
         var sequence = 0L
         var intervalStartSample = 0L
         var intervalSampleCount = 0
@@ -86,6 +87,16 @@ class AndroidSessionCapture(
             val active = selection.record
             record = active
             activeRecord = active
+
+            // Inspect the actual AudioRecord session rather than inferring
+            // preprocessing from device-wide availability alone. If Android
+            // exposes controllable capture preprocessors on this session,
+            // request them disabled and retain the effect handles for the
+            // lifetime of the recording.
+            preprocessorAudit = CapturePreprocessorAudit.attachAndDisable(
+                audioSessionId = active.audioSessionId,
+            )
+
             active.startRecording()
             if (active.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 error("AudioRecord did not enter RECORDSTATE_RECORDING")
@@ -101,7 +112,7 @@ class AndroidSessionCapture(
                 source = sourceName(active.audioSource),
                 sampleRateHz = rate,
                 inputIdentity = expectedRouteIdentity,
-                processingState = processingAvailability(),
+                processingState = preprocessorAudit.description,
             )
             onStarted(configuration)
 
@@ -211,6 +222,7 @@ class AndroidSessionCapture(
             if (record != null && record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 runCatching { record.stop() }
             }
+            runCatching { preprocessorAudit?.close() }
             runCatching { record?.release() }
         }
     }
@@ -280,10 +292,122 @@ class AndroidSessionCapture(
         return "type=" + device.type + " · " + device.productName
     }
 
-    private fun processingAvailability(): String =
-        "availability only: AEC=" + AcousticEchoCanceler.isAvailable() +
-            ", AGC=" + AutomaticGainControl.isAvailable() +
-            ", NS=" + NoiseSuppressor.isAvailable()
+    private class CapturePreprocessorAudit private constructor(
+        private val agc: AutomaticGainControl?,
+        private val noiseSuppressor: NoiseSuppressor?,
+        private val echoCanceler: AcousticEchoCanceler?,
+        val description: String,
+    ) : AutoCloseable {
+        override fun close() {
+            runCatching { agc?.release() }
+            runCatching { noiseSuppressor?.release() }
+            runCatching { echoCanceler?.release() }
+        }
+
+        companion object {
+            fun attachAndDisable(audioSessionId: Int): CapturePreprocessorAudit {
+                val states = mutableListOf<String>()
+
+                val agc = inspectAgc(audioSessionId, states)
+                val noiseSuppressor = inspectNoiseSuppressor(audioSessionId, states)
+                val echoCanceler = inspectEchoCanceler(audioSessionId, states)
+
+                states += "vendor_or_hardware_processing=unknown"
+
+                return CapturePreprocessorAudit(
+                    agc = agc,
+                    noiseSuppressor = noiseSuppressor,
+                    echoCanceler = echoCanceler,
+                    description = states.joinToString("; "),
+                )
+            }
+
+            private fun inspectAgc(
+                audioSessionId: Int,
+                states: MutableList<String>,
+            ): AutomaticGainControl? {
+                if (!AutomaticGainControl.isAvailable()) {
+                    states += "AGC=unavailable"
+                    return null
+                }
+
+                val effect = runCatching {
+                    AutomaticGainControl.create(audioSessionId)
+                }.getOrNull()
+
+                if (effect == null) {
+                    states += "AGC=available,attach=failed"
+                    return null
+                }
+
+                states += describeAndDisable("AGC", effect)
+                return effect
+            }
+
+            private fun inspectNoiseSuppressor(
+                audioSessionId: Int,
+                states: MutableList<String>,
+            ): NoiseSuppressor? {
+                if (!NoiseSuppressor.isAvailable()) {
+                    states += "NS=unavailable"
+                    return null
+                }
+
+                val effect = runCatching {
+                    NoiseSuppressor.create(audioSessionId)
+                }.getOrNull()
+
+                if (effect == null) {
+                    states += "NS=available,attach=failed"
+                    return null
+                }
+
+                states += describeAndDisable("NS", effect)
+                return effect
+            }
+
+            private fun inspectEchoCanceler(
+                audioSessionId: Int,
+                states: MutableList<String>,
+            ): AcousticEchoCanceler? {
+                if (!AcousticEchoCanceler.isAvailable()) {
+                    states += "AEC=unavailable"
+                    return null
+                }
+
+                val effect = runCatching {
+                    AcousticEchoCanceler.create(audioSessionId)
+                }.getOrNull()
+
+                if (effect == null) {
+                    states += "AEC=available,attach=failed"
+                    return null
+                }
+
+                states += describeAndDisable("AEC", effect)
+                return effect
+            }
+
+            private fun describeAndDisable(
+                name: String,
+                effect: android.media.audiofx.AudioEffect,
+            ): String {
+                val before = runCatching { effect.enabled }.getOrNull()
+                val control = runCatching { effect.hasControl() }.getOrNull()
+                val disableResult = runCatching {
+                    effect.setEnabled(false)
+                }.getOrNull()
+                val after = runCatching { effect.enabled }.getOrNull()
+
+                return name +
+                    "=available" +
+                    ",control=" + control +
+                    ",before=" + before +
+                    ",disable_result=" + disableResult +
+                    ",after=" + after
+            }
+        }
+    }
 
     private fun sourceName(source: Int): String = when (source) {
         MediaRecorder.AudioSource.UNPROCESSED -> "UNPROCESSED"
