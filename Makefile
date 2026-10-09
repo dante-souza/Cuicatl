@@ -8,7 +8,7 @@ GRADLE := ./gradlew
 JDK_DOCTOR := java -version
 endif
 
-.PHONY: check build-debug jdk-doctor gradle-stop gradle-verify jdk-repair install-j8 open-j8 j8-preflight probe-log-j8 phase1-recovery-kill-j8
+.PHONY: check build-debug jdk-doctor gradle-stop gradle-verify jdk-repair install-j8 open-j8 j8-preflight probe-log-j8 phase1-recovery-kill-j8 phase1-screenoff-j8 phase1-recreate-j8
 
 # Diagnose the launching JDK without changing the caller's environment.
 jdk-doctor:
@@ -53,3 +53,10 @@ probe-log-j8: j8-preflight
 
 phase1-recovery-kill-j8: j8-preflight
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-recovery-kill-j8.ps1
+
+
+phase1-screenoff-j8: j8-preflight
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-lifecycle-j8.ps1 -Mode ScreenOff
+
+phase1-recreate-j8: j8-preflight
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-lifecycle-j8.ps1 -Mode Recreate
