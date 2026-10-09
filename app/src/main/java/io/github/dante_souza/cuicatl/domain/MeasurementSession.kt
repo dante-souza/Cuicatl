@@ -8,7 +8,7 @@ data class MeasurementSession(
     val outcome: SessionOutcome? = null,
     val startedAtUtcEpochMillis: Long = 0L,
     val timezoneOffset: String = "",
-    val elapsedMillis: Long = 0L,
+    val elapsedMillis: Long? = null,
     val capturedMillis: Long = 0L,
     val source: String = "",
     val sampleRateHz: Int = 0,
