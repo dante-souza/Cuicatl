@@ -5,13 +5,11 @@ object SessionCommandPolicy {
     fun acceptsStart(status: SessionRuntimeSnapshot.Status): Boolean =
         when (status) {
             SessionRuntimeSnapshot.Status.READY,
-            SessionRuntimeSnapshot.Status.FAILED,
-            -> true
+            SessionRuntimeSnapshot.Status.FAILED -> true
 
             SessionRuntimeSnapshot.Status.STARTING,
             SessionRuntimeSnapshot.Status.RUNNING,
-            SessionRuntimeSnapshot.Status.FINALIZING,
-            -> false
+            SessionRuntimeSnapshot.Status.FINALIZING -> false
         }
 
     fun acceptsStop(
