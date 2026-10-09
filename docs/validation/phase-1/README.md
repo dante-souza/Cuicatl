@@ -1,6 +1,6 @@
 # Phase 1 — usable session, preservation, and export
 
-Status: **implementation started** on feature/phase-1-usable-session-export.
+Status: **closure in progress** on feature/phase-1-usable-session-export.
 
 Planning gate: capture a labeled event on the J8, inspect its history, stop and reopen it, export/share a CSV, and interpret it externally. Finalize schema 1 only after independent inspection of the real export fixture.
 
@@ -24,9 +24,9 @@ Implemented in the first Phase 1 slice:
 
 ## Deliberately not claimed yet
 
-- schema version 1 is not frozen;
+- CSV schema version 1 is frozen after independent completed/recovered export inspection;
 - append storage has passed process-kill recovery semantics, readable-prefix recovery, and one instrumented J8 run with 0 loss of complete rows visible at the pre-kill snapshot;
-- the required SQLite/Room comparison is not yet closed;
+- append-oriented app-private storage is selected; Room/SQLite is deferred with explicit adoption triggers;
 - modern Android service/permission coverage is not established by the J8;
 - no SPL, calibration, A/Z weighting, Leq, Fast, or Slow values are displayed;
 - no acoustic accuracy claim is made.
@@ -46,12 +46,12 @@ Implemented in the first Phase 1 slice:
 - [x] Clipping count/flag is present in the first J8 fixture; 130 clipped frames / 83,349 endpoint samples were independently counted.
 - [x] Process death produces a RECOVERED record with process_recovery, never a false continuous session.
 - [x] Observed J8 process-death preservation bound is recorded: 446 complete rows visible pre-kill, 449 recovered, 0 known complete-row loss.
-- [ ] Append vs SQLite/Room comparison is closed with evidence.
-- [ ] Storage failure behavior is exercised or explicitly recorded as unexercised.
+- [x] Persistence decision is closed: append-oriented Candidate A selected from tested evidence; Room/SQLite deferred with explicit adoption triggers.
+- [x] Storage-write failure is explicitly recorded as unexercised because no safe reproducible J8 fault-injection method was established.
 - [ ] Input change/interruption behavior is recorded.
 - [ ] Screen-off behavior is tested for the implemented foreground-service path.
 - [ ] First acoustic task/setting is recorded before final user acceptance.
 - [x] Real exported fixtures are independently inspected externally; the second fixture closes the timing-provenance correction.
-- [ ] CSV schema 1 is finalized only after that inspection.
+- [x] CSV schema 1 is finalized after completed and RECOVERED fixtures were independently inspected.
 
 Original-dimension screenshots, logs, exported fixtures, APK identity, and checksums belong under this validation directory when the J8 run is performed.
