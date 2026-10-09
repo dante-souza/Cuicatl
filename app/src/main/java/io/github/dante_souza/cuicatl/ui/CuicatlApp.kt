@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,6 +55,7 @@ import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
+import io.github.dante_souza.cuicatl.domain.MeasurementInputConfiguration
 import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
@@ -198,6 +200,7 @@ fun CuicatlApp() {
                 AnalyzerPage.METER -> {
                     MeterPage(
                         snapshot = snapshot,
+                        activeReferenceAdjustment = activeReferenceAdjustment,
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
                         frequencyWeighting = frequencyWeighting,
@@ -269,6 +272,7 @@ fun CuicatlApp() {
 @Composable
 private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
+    activeReferenceAdjustment: ReferenceAdjustment?,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
     frequencyWeighting: FrequencyWeighting,
@@ -349,6 +353,46 @@ private fun MeterPage(
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
             )
+            activeReferenceAdjustment?.let { active ->
+                val configuration =
+                    if (
+                        session != null &&
+                        session.source.isNotBlank() &&
+                        session.inputIdentity.isNotBlank() &&
+                        session.sampleRateHz > 0
+                    ) {
+                        MeasurementInputConfiguration(
+                            deviceModel = Build.MODEL,
+                            inputIdentity = session.inputIdentity,
+                            audioSource = session.source,
+                            sampleRateHz = session.sampleRateHz,
+                            sampleFormat = "PCM16_MONO",
+                            frequencyWeighting = effectiveWeighting,
+                        )
+                    } else {
+                        null
+                    }
+                val mismatches = configuration?.let(active::mismatches)
+                Text(
+                    when {
+                        configuration == null ->
+                            "Reference adjustment stored · compatibility will be checked after capture starts."
+                        mismatches.isNullOrEmpty() ->
+                            "Reference adjustment matches this capture configuration · SPL still disabled pending physical validation."
+                        else ->
+                            "Reference adjustment mismatch: " +
+                                mismatches.joinToString(", ") { it.name.lowercase().replace('_', ' ') } +
+                                " · SPL unavailable."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color =
+                        if (configuration != null && mismatches.isNullOrEmpty()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
+                )
+            }
         }
     }
 
