@@ -51,7 +51,7 @@ Implemented in the first Phase 1 slice:
 - [ ] Input change/interruption behavior is recorded.
 - [ ] Screen-off behavior is tested for the implemented foreground-service path.
 - [ ] First acoustic task/setting is recorded before final user acceptance.
-- [ ] Real exported fixture is inspected externally.
+- [x] Real exported fixtures are independently inspected externally; the second fixture closes the timing-provenance correction.
 - [ ] CSV schema 1 is finalized only after that inspection.
 
 Original-dimension screenshots, logs, exported fixtures, APK identity, and checksums belong under this validation directory when the J8 run is performed.
