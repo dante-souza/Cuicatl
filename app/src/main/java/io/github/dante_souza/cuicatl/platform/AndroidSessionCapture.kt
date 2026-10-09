@@ -13,6 +13,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.SystemClock
+import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementMath
 import io.github.dante_souza.cuicatl.domain.QualityFlag
@@ -33,6 +34,7 @@ data class CaptureConfiguration(
 class AndroidSessionCapture(
     context: Context,
     private val sessionId: String,
+    private val agcRequest: AgcRequest,
     private val onStarted: (CaptureConfiguration) -> Unit,
     private val onFrame: (MeasurementFrame) -> Unit,
     private val onStopped: (elapsedMillis: Long) -> Unit,
@@ -93,8 +95,9 @@ class AndroidSessionCapture(
             // exposes controllable capture preprocessors on this session,
             // request them disabled and retain the effect handles for the
             // lifetime of the recording.
-            preprocessorAudit = CapturePreprocessorAudit.attachAndDisable(
+            preprocessorAudit = CapturePreprocessorAudit.attachAndApply(
                 audioSessionId = active.audioSessionId,
+                agcRequest = agcRequest,
             )
 
             active.startRecording()
@@ -305,11 +308,19 @@ class AndroidSessionCapture(
         }
 
         companion object {
-            fun attachAndDisable(audioSessionId: Int): CapturePreprocessorAudit {
+            fun attachAndApply(
+                audioSessionId: Int,
+                agcRequest: AgcRequest,
+            ): CapturePreprocessorAudit {
                 val states = mutableListOf<String>()
+                states += "agc_request=" + agcRequest.name
 
-                val agc = inspectAgc(audioSessionId, states)
+                val agc = inspectAgc(audioSessionId, agcRequest, states)
+
+                states += "ns_request=FORCE_OFF"
                 val noiseSuppressor = inspectNoiseSuppressor(audioSessionId, states)
+
+                states += "aec_request=FORCE_OFF"
                 val echoCanceler = inspectEchoCanceler(audioSessionId, states)
 
                 states += "vendor_or_hardware_processing=unknown"
@@ -324,6 +335,7 @@ class AndroidSessionCapture(
 
             private fun inspectAgc(
                 audioSessionId: Int,
+                request: AgcRequest,
                 states: MutableList<String>,
             ): AutomaticGainControl? {
                 if (!AutomaticGainControl.isAvailable()) {
@@ -340,7 +352,15 @@ class AndroidSessionCapture(
                     return null
                 }
 
-                states += describeAndDisable("AGC", effect)
+                states += describeAndApply(
+                    name = "AGC",
+                    effect = effect,
+                    requestedEnabled = when (request) {
+                        AgcRequest.DEFAULT -> null
+                        AgcRequest.FORCE_OFF -> false
+                        AgcRequest.FORCE_ON -> true
+                    },
+                )
                 return effect
             }
 
@@ -362,7 +382,11 @@ class AndroidSessionCapture(
                     return null
                 }
 
-                states += describeAndDisable("NS", effect)
+                states += describeAndApply(
+                    name = "NS",
+                    effect = effect,
+                    requestedEnabled = false,
+                )
                 return effect
             }
 
@@ -384,26 +408,36 @@ class AndroidSessionCapture(
                     return null
                 }
 
-                states += describeAndDisable("AEC", effect)
+                states += describeAndApply(
+                    name = "AEC",
+                    effect = effect,
+                    requestedEnabled = false,
+                )
                 return effect
             }
 
-            private fun describeAndDisable(
+            private fun describeAndApply(
                 name: String,
                 effect: android.media.audiofx.AudioEffect,
+                requestedEnabled: Boolean?,
             ): String {
                 val before = runCatching { effect.enabled }.getOrNull()
                 val control = runCatching { effect.hasControl() }.getOrNull()
-                val disableResult = runCatching {
-                    effect.setEnabled(false)
-                }.getOrNull()
+                val applyResult =
+                    when {
+                        requestedEnabled == null -> "not_requested"
+                        control != true -> "no_control"
+                        else -> runCatching {
+                            effect.setEnabled(requestedEnabled).toString()
+                        }.getOrElse { "error:" + it::class.java.simpleName }
+                    }
                 val after = runCatching { effect.enabled }.getOrNull()
 
                 return name +
                     "=available" +
                     ",control=" + control +
                     ",before=" + before +
-                    ",disable_result=" + disableResult +
+                    ",apply_result=" + applyResult +
                     ",after=" + after
             }
         }
