@@ -35,7 +35,7 @@ class SessionRepository(context: Context) {
                 metadata.setProperty(KEY_STATE, SessionState.SAVED.name)
                 metadata.setProperty(KEY_OUTCOME, SessionOutcome.RECOVERED.name)
                 metadata.setProperty(KEY_CAPTURED_MS, capturedMillis.toString())
-                metadata.setProperty(KEY_ELAPSED_MS, capturedMillis.toString())
+                metadata.remove(KEY_ELAPSED_MS)
                 metadata.setProperty(KEY_FRAME_COUNT, frames.size.toString())
                 metadata.setProperty(KEY_INTERRUPTION_REASON, "process_recovery")
                 writeMetadata(directory, metadata)
@@ -185,7 +185,7 @@ class SessionRepository(context: Context) {
                 ?.let(SessionOutcome::valueOf),
             startedAtUtcEpochMillis = metadata.getProperty(KEY_STARTED_UTC_MS, "0").toLong(),
             timezoneOffset = metadata.getProperty(KEY_TIMEZONE_OFFSET).orEmpty(),
-            elapsedMillis = metadata.getProperty(KEY_ELAPSED_MS, "0").toLong(),
+            elapsedMillis = metadata.getProperty(KEY_ELAPSED_MS)?.toLongOrNull(),
             capturedMillis = metadata.getProperty(KEY_CAPTURED_MS, "0").toLong(),
             source = metadata.getProperty(KEY_SOURCE).orEmpty(),
             sampleRateHz = metadata.getProperty(KEY_SAMPLE_RATE_HZ, "0").toInt(),
