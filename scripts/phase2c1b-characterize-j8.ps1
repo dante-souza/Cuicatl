@@ -15,8 +15,16 @@ $script:ProbeRecords = @()
 $script:RootAvailable = $false
 
 function Test-AdbRoot {
-    $probeOutput = @(& adb -s $ExpectedSerial shell su -c id 2>&1)
-    $probeExitCode = $LASTEXITCODE
+    # PowerShell 5.1 promotes redirected native stderr to an error record.
+    # Expected adb/su diagnostics must not abort root detection.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $probeOutput = @(& adb -s $ExpectedSerial shell su -c id 2>&1)
+        $probeExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
     $probeText = (($probeOutput | ForEach-Object { "$_" }) -join "`n").Trim()
 
     [pscustomobject]@{
@@ -44,13 +52,23 @@ function Capture-Adb {
         'shell'
     }
 
-    # Capture both adb stdout and stderr on the host. Keep Android-side commands read-only.
-    if ($useRoot) {
-        $capture = @(& adb -s $ExpectedSerial shell su -c $ShellCommand 2>&1)
-    } else {
-        $capture = @(& adb -s $ExpectedSerial shell $ShellCommand 2>&1)
+    # Read-only probes can legitimately emit stderr or exit nonzero.
+    # Suppress PowerShell's terminating treatment of native stderr for this invocation only.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($useRoot) {
+            # Quote the whole command as the single argument expected by su -c.
+            # These probe commands use no embedded single quotes.
+            $quotedShellCommand = "'" + $ShellCommand + "'"
+            $capture = @(& adb -s $ExpectedSerial shell "su -c $quotedShellCommand" 2>&1)
+        } else {
+            $capture = @(& adb -s $ExpectedSerial shell $ShellCommand 2>&1)
+        }
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
     }
-    $exitCode = $LASTEXITCODE
 
     if ($capture.Count -eq 0) {
         '' | Out-File -FilePath $target -Encoding utf8
