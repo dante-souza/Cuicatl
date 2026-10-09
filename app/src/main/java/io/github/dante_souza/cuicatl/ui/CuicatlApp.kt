@@ -452,7 +452,10 @@ private fun SavedSessionDetailCard(
             )
             Text("Outcome: " + session.outcome?.name.orEmpty())
             Text("Captured: " + formatDuration(session.capturedMillis))
-            Text("Elapsed: " + formatDuration(session.elapsedMillis))
+            Text(
+                "Elapsed: " +
+                    (session.elapsedMillis?.let(::formatDuration) ?: "unavailable after recovery"),
+            )
             Text("Source: " + session.source)
             Text("Sample rate: " + session.sampleRateHz + " Hz")
             Text("Input: " + session.inputIdentity)
