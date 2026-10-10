@@ -191,6 +191,7 @@ class MeasurementService : Service() {
         referenceLevelDbSpl: Double,
         referenceFrequencyHz: Double?,
         referenceUncertaintyDb: Double?,
+        physicalReferenceConfirmed: Boolean,
         geometry: String,
         environmentNotes: String,
         procedureNotes: String,
@@ -200,6 +201,9 @@ class MeasurementService : Service() {
         }
         if (geometry.isBlank()) {
             return "Reference geometry/coupling is required."
+        }
+        if (!physicalReferenceConfirmed) {
+            return "Confirm that the physical reference was actually present for this session."
         }
 
         val procedure =
@@ -211,6 +215,7 @@ class MeasurementService : Service() {
                     referenceLevelDbSpl = referenceLevelDbSpl,
                     referenceFrequencyHz = referenceFrequencyHz,
                     referenceUncertaintyDb = referenceUncertaintyDb,
+                    physicalReferenceConfirmed = physicalReferenceConfirmed,
                     geometry = geometry.trim(),
                     environmentNotes = environmentNotes.trim(),
                     procedureNotes = procedureNotes.trim(),
@@ -254,6 +259,7 @@ class MeasurementService : Service() {
     fun verifyActiveRootlessCalibration(
         verificationSessionId: String,
         maximumAllowedDriftDb: Double,
+        sameReferenceConditionsConfirmed: Boolean,
         notes: String,
     ): String? {
         val active =
@@ -267,6 +273,9 @@ class MeasurementService : Service() {
         }
         if (!maximumAllowedDriftDb.isFinite() || maximumAllowedDriftDb < 0.0) {
             return "Maximum allowed drift must be a non-negative number."
+        }
+        if (!sameReferenceConditionsConfirmed) {
+            return "Confirm that the same physical reference, geometry and conditions were repeated."
         }
 
         val detail =
@@ -313,6 +322,7 @@ class MeasurementService : Service() {
                     observationCount = 2,
                     verificationSessionId = verificationSessionId,
                     observedAtUtcEpochMillis = observedAtUtcEpochMillis,
+                    sameReferenceConditionsConfirmed = sameReferenceConditionsConfirmed,
                     notes = notes.trim(),
                 )
             }.getOrElse { error ->
