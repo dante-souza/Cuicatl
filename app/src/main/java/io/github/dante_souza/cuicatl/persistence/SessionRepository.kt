@@ -3,6 +3,9 @@ package io.github.dante_souza.cuicatl.persistence
 
 import android.content.Context
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.CalibrationSessionSnapshot
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationEvidenceState
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
@@ -64,6 +67,23 @@ class SessionRepository(context: Context) {
             setProperty(KEY_PROCESSING_STATE, session.processingState)
             setProperty(KEY_FREQUENCY_WEIGHTING, session.frequencyWeighting.name)
             setProperty(KEY_SAMPLE_FORMAT, SAMPLE_FORMAT)
+            session.calibrationSnapshot?.let { snapshot ->
+                setProperty(KEY_CALIBRATION_PROFILE_ID, snapshot.profileId)
+                setProperty(KEY_CALIBRATION_PROFILE_VERSION, snapshot.profileVersion.toString())
+                setProperty(KEY_CALIBRATION_EVIDENCE_STATE, snapshot.evidenceState.name)
+                setProperty(KEY_CALIBRATION_REFERENCE_METHOD, snapshot.referenceMethod.name)
+                setProperty(
+                    KEY_CALIBRATION_REFERENCE_LEVEL_DB_SPL,
+                    snapshot.referenceLevelDbSpl.toString(),
+                )
+                setProperty(
+                    KEY_CALIBRATION_REFERENCE_CORRECTION_DB,
+                    snapshot.referenceCorrectionDb.toString(),
+                )
+                snapshot.validatedAtUtcEpochMillis?.let {
+                    setProperty(KEY_CALIBRATION_VALIDATED_AT_UTC_MS, it.toString())
+                }
+            }
             setProperty(KEY_FRAME_COUNT, "0")
             setProperty(KEY_CAPTURED_MS, "0")
             setProperty(KEY_ELAPSED_MS, "0")
@@ -143,7 +163,7 @@ class SessionRepository(context: Context) {
         val target = File(directory, METADATA_FILE)
         val temporary = File(directory, METADATA_TEMP_FILE)
         FileOutputStream(temporary).use { output ->
-            properties.store(output, "Cuicatl Phase 1 session metadata")
+            properties.store(output, "Cuicatl session metadata")
             output.fd.sync()
         }
         check(temporary.renameTo(target) || copyReplacing(temporary, target)) {
@@ -228,7 +248,44 @@ class SessionRepository(context: Context) {
                 ?: FrequencyWeighting.Z,
             interruptionReason = metadata.getProperty(KEY_INTERRUPTION_REASON)
                 ?.takeIf { it.isNotBlank() },
+            calibrationSnapshot = calibrationSnapshotFromMetadata(metadata),
         )
+
+    private fun calibrationSnapshotFromMetadata(
+        metadata: Properties,
+    ): CalibrationSessionSnapshot? {
+        val profileId =
+            metadata.getProperty(KEY_CALIBRATION_PROFILE_ID)
+                ?.takeIf { it.isNotBlank() }
+                ?: return null
+        return runCatching {
+            CalibrationSessionSnapshot(
+                profileId = profileId,
+                profileVersion =
+                    metadata.getProperty(KEY_CALIBRATION_PROFILE_VERSION).toInt(),
+                evidenceState =
+                    RootlessCalibrationEvidenceState.valueOf(
+                        metadata.getProperty(KEY_CALIBRATION_EVIDENCE_STATE),
+                    ),
+                referenceMethod =
+                    RootlessReferenceMethod.valueOf(
+                        metadata.getProperty(KEY_CALIBRATION_REFERENCE_METHOD),
+                    ),
+                referenceLevelDbSpl =
+                    metadata.getProperty(
+                        KEY_CALIBRATION_REFERENCE_LEVEL_DB_SPL,
+                    ).toDouble(),
+                referenceCorrectionDb =
+                    metadata.getProperty(
+                        KEY_CALIBRATION_REFERENCE_CORRECTION_DB,
+                    ).toDouble(),
+                validatedAtUtcEpochMillis =
+                    metadata.getProperty(
+                        KEY_CALIBRATION_VALIDATED_AT_UTC_MS,
+                    )?.toLongOrNull(),
+            )
+        }.getOrNull()
+    }
 
     inner class ActiveWriter internal constructor(
         private val directory: File,
@@ -344,5 +401,15 @@ class SessionRepository(context: Context) {
         const val KEY_CAPTURED_MS = "captured_ms"
         const val KEY_ELAPSED_MS = "elapsed_ms"
         const val KEY_INTERRUPTION_REASON = "interruption_reason"
+        const val KEY_CALIBRATION_PROFILE_ID = "calibration_profile_id"
+        const val KEY_CALIBRATION_PROFILE_VERSION = "calibration_profile_version"
+        const val KEY_CALIBRATION_EVIDENCE_STATE = "calibration_evidence_state"
+        const val KEY_CALIBRATION_REFERENCE_METHOD = "calibration_reference_method"
+        const val KEY_CALIBRATION_REFERENCE_LEVEL_DB_SPL =
+            "calibration_reference_level_db_spl"
+        const val KEY_CALIBRATION_REFERENCE_CORRECTION_DB =
+            "calibration_reference_correction_db"
+        const val KEY_CALIBRATION_VALIDATED_AT_UTC_MS =
+            "calibration_validated_at_utc_ms"
     }
 }
