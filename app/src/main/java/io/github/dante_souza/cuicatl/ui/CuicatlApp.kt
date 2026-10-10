@@ -263,31 +263,42 @@ fun CuicatlApp() {
                         },
                         activeCalibrationProfile = activeCalibrationProfile,
                         onCreateCalibrationDraft = { detail, input ->
-                            val error = measurementService?.createRootlessCalibrationDraft(
-                                sessionId = detail.session.id,
-                                method = input.method,
-                                equipmentDescription = input.equipmentDescription,
-                                equipmentIdentifier = input.equipmentIdentifier,
-                                referenceLevelDbSpl = input.referenceLevelDbSpl,
-                                referenceFrequencyHz = input.referenceFrequencyHz,
-                                referenceUncertaintyDb = input.referenceUncertaintyDb,
-                                geometry = input.geometry,
-                                environmentNotes = input.environmentNotes,
-                                procedureNotes = input.procedureNotes,
-                            ) ?: "Measurement service is unavailable."
+                            val service = measurementService
+                            val error =
+                                if (service == null) {
+                                    "Measurement service is unavailable."
+                                } else {
+                                    service.createRootlessCalibrationDraft(
+                                        sessionId = detail.session.id,
+                                        method = input.method,
+                                        equipmentDescription = input.equipmentDescription,
+                                        equipmentIdentifier = input.equipmentIdentifier,
+                                        referenceLevelDbSpl = input.referenceLevelDbSpl,
+                                        referenceFrequencyHz = input.referenceFrequencyHz,
+                                        referenceUncertaintyDb = input.referenceUncertaintyDb,
+                                        geometry = input.geometry,
+                                        environmentNotes = input.environmentNotes,
+                                        procedureNotes = input.procedureNotes,
+                                    )
+                                }
                             activeCalibrationProfile =
-                                measurementService?.activeRootlessCalibrationProfile()
+                                service?.activeRootlessCalibrationProfile()
                             error
                         },
                         onVerifyCalibration = { detail, allowedDrift, notes ->
-                            val error = measurementService?.verifyActiveRootlessCalibration(
-                                verificationSessionId = detail.session.id,
-                                maximumAllowedDriftDb = allowedDrift,
-                                notes = notes,
-                            ) ?: "Measurement service is unavailable."
+                            val service = measurementService
+                            val error =
+                                if (service == null) {
+                                    "Measurement service is unavailable."
+                                } else {
+                                    service.verifyActiveRootlessCalibration(
+                                        verificationSessionId = detail.session.id,
+                                        maximumAllowedDriftDb = allowedDrift,
+                                        notes = notes,
+                                    )
+                                }
                             activeCalibrationProfile =
-                                measurementService?.activeRootlessCalibrationProfile()
-                            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
+                                service?.activeRootlessCalibrationProfile()
                             error
                         },
                         onClearCalibration = {
@@ -312,7 +323,6 @@ fun CuicatlApp() {
                             savedSessions = measurementService?.savedSessions().orEmpty()
                             activeCalibrationProfile =
                                 measurementService?.activeRootlessCalibrationProfile()
-                            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
                             deleted
                         },
                     )
