@@ -291,6 +291,10 @@ class RootlessCalibrationRepository(context: Context) {
             procedure.referenceUncertaintyDb?.let {
                 setProperty(KEY_REFERENCE_UNCERTAINTY_DB, it.toString())
             }
+            setProperty(
+                KEY_PHYSICAL_REFERENCE_CONFIRMED,
+                procedure.physicalReferenceConfirmed.toString(),
+            )
             setProperty(KEY_GEOMETRY, procedure.geometry)
             setProperty(
                 KEY_ENVIRONMENT_NOTES,
@@ -322,6 +326,10 @@ class RootlessCalibrationRepository(context: Context) {
                 setProperty(
                     KEY_VERIFICATION_OBSERVED_AT_UTC_MS,
                     verification.observedAtUtcEpochMillis.toString(),
+                )
+                setProperty(
+                    KEY_VERIFICATION_SAME_REFERENCE_CONFIRMED,
+                    verification.sameReferenceConditionsConfirmed.toString(),
                 )
                 setProperty(
                     KEY_VERIFICATION_NOTES,
@@ -383,6 +391,11 @@ class RootlessCalibrationRepository(context: Context) {
                 referenceUncertaintyDb =
                     p.getProperty(KEY_REFERENCE_UNCERTAINTY_DB)
                         ?.toDoubleOrNull(),
+                physicalReferenceConfirmed =
+                    p.getProperty(
+                        KEY_PHYSICAL_REFERENCE_CONFIRMED,
+                        "false",
+                    ).toBoolean(),
                 geometry = p.getProperty(KEY_GEOMETRY),
                 environmentNotes =
                     p.getProperty(KEY_ENVIRONMENT_NOTES).orEmpty(),
@@ -415,6 +428,11 @@ class RootlessCalibrationRepository(context: Context) {
                                 KEY_VERIFICATION_OBSERVED_AT_UTC_MS,
                                 "0",
                             ).toLong(),
+                        sameReferenceConditionsConfirmed =
+                            p.getProperty(
+                                KEY_VERIFICATION_SAME_REFERENCE_CONFIRMED,
+                                "false",
+                            ).toBoolean(),
                         notes =
                             p.getProperty(
                                 KEY_VERIFICATION_NOTES,
@@ -517,6 +535,8 @@ class RootlessCalibrationRepository(context: Context) {
             "reference_frequency_hz"
         const val KEY_REFERENCE_UNCERTAINTY_DB =
             "reference_uncertainty_db"
+        const val KEY_PHYSICAL_REFERENCE_CONFIRMED =
+            "physical_reference_confirmed"
         const val KEY_GEOMETRY = "geometry"
         const val KEY_ENVIRONMENT_NOTES = "environment_notes"
         const val KEY_PROCEDURE_NOTES = "procedure_notes"
@@ -533,6 +553,8 @@ class RootlessCalibrationRepository(context: Context) {
             "verification_session_id"
         const val KEY_VERIFICATION_OBSERVED_AT_UTC_MS =
             "verification_observed_at_utc_ms"
+        const val KEY_VERIFICATION_SAME_REFERENCE_CONFIRMED =
+            "verification_same_reference_confirmed"
         const val KEY_VERIFICATION_NOTES = "verification_notes"
     }
 }
