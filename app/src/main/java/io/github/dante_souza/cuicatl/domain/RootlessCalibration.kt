@@ -44,6 +44,8 @@ data class RootlessCalibrationVerification(
     val afterMeasuredLevelDbfs: Double,
     val maximumAllowedDriftDb: Double,
     val observationCount: Int,
+    val verificationSessionId: String = "",
+    val observedAtUtcEpochMillis: Long = 0L,
     val notes: String = "",
 ) {
     init {
@@ -54,6 +56,9 @@ data class RootlessCalibrationVerification(
         }
         require(observationCount >= MIN_OBSERVATIONS) {
             "At least two reference observations are required"
+        }
+        require(observedAtUtcEpochMillis >= 0L) {
+            "Verification timestamp must not be negative"
         }
     }
 
@@ -120,7 +125,13 @@ data class RootlessCalibrationProfile(
         }
         require(
             status != RootlessCalibrationStatus.VALIDATED ||
-                (verification != null && verification.passes && validatedAtUtcEpochMillis != null)
+                (
+                    verification != null &&
+                        verification.passes &&
+                        verification.verificationSessionId.isNotBlank() &&
+                        verification.observedAtUtcEpochMillis > 0L &&
+                        validatedAtUtcEpochMillis != null
+                )
         ) {
             "Validated calibration requires a passing verification and validation timestamp"
         }

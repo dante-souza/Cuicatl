@@ -46,6 +46,8 @@ class RootlessCalibrationTest {
         afterMeasuredLevelDbfs = -39.7,
         maximumAllowedDriftDb = 0.5,
         observationCount = 2,
+        verificationSessionId = "session-2",
+        observedAtUtcEpochMillis = 200L,
     )
 
     @Test fun draftProfileNeverEnablesSpl() {
