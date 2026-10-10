@@ -602,7 +602,7 @@ private fun HistoryPage(
             title = { Text("Sanitize saved sessions?") },
             text = {
                 Text(
-                    "This removes all saved Cuicatl session records, cached CSV exports, and the active reference adjustment. " +
+                    "This removes all saved Cuicatl session records, cached CSV exports, and rootless calibration profiles. " +
                         "An active recording is not deleted. Copies already shared or backed up are not affected. " +
                         "This is logical deletion, not guaranteed forensic secure erasure.",
                 )
@@ -863,27 +863,177 @@ private fun SavedSessionDetailCard(
                 color = MaterialTheme.colorScheme.outline,
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Reference adjustment setup", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Use only a deliberate physical reference recording. Storing an adjustment does not enable SPL estimates.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            activeReferenceAdjustment?.let { active ->
+            session.calibrationSnapshot?.let { snapshot ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Session calibration snapshot", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Active stored adjustment: " + active.frequencyWeighting.name +
-                        " · correction " + String.format(Locale.US, "%+.2f dB", active.correctionDb),
+                    snapshot.evidenceState.name.lowercase().replace('_', ' ') +
+                        " · " + snapshot.profileId + " v" + snapshot.profileVersion,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "Method: " + active.referenceMethod,
+                    "Reference: " +
+                        String.format(Locale.US, "%.2f dB SPL", snapshot.referenceLevelDbSpl) +
+                        " · correction " +
+                        String.format(Locale.US, "%+.2f dB", snapshot.referenceCorrectionDb),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                TextButton(onClick = onClearReferenceAdjustment) {
-                    Text("Clear active adjustment")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Rootless calibration", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Use only deliberate measurements made against a real physical reference. " +
+                    "Creating or validating a profile still does not enable SPL display in this phase.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
+            activeCalibrationProfile?.let { profile ->
+                Text(
+                    "Active profile: " + profile.status.name +
+                        " · " + profile.id + " v" + profile.version,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Method: " + profile.procedure.method.displayLabel(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Equipment/source: " + profile.procedure.equipmentDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Reference: " +
+                        String.format(
+                            Locale.US,
+                            "%.2f dB SPL",
+                            profile.adjustment.referenceLevelDbSpl,
+                        ) +
+                        " · measured " +
+                        String.format(
+                            Locale.US,
+                            "%.2f dBFS",
+                            profile.adjustment.measuredReferenceLevelDbfs,
+                        ) +
+                        " · correction " +
+                        String.format(Locale.US, "%+.2f dB", profile.adjustment.correctionDb),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                profile.verification?.let { verification ->
+                    Text(
+                        "Verification drift: " +
+                            String.format(Locale.US, "%.2f dB", verification.observedDriftDb) +
+                            " · allowed " +
+                            String.format(Locale.US, "%.2f dB", verification.maximumAllowedDriftDb) +
+                            " · " + if (verification.passes) "PASS" else "FAIL",
+                        style = MaterialTheme.typography.bodySmall,
+                        color =
+                            if (verification.passes) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                    )
+                }
+
+                if (profile.sourceSessionId == session.id) {
+                    Text(
+                        "This session is reference observation #1 for the active profile.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                } else if (profile.status == RootlessCalibrationStatus.DRAFT) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Verification observation #2", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Use this only if this session was recorded under the same physical reference, geometry and conditions as observation #1.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    OutlinedTextField(
+                        value = allowedDriftText,
+                        onValueChange = { allowedDriftText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Maximum allowed drift · dB") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = verificationNotes,
+                        onValueChange = { verificationNotes = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Verification notes") },
+                    )
+                    Button(
+                        onClick = {
+                            val allowed = allowedDriftText.toDoubleOrNull()
+                            calibrationMessage =
+                                if (allowed == null || allowed < 0.0) {
+                                    "Enter a non-negative maximum allowed drift."
+                                } else {
+                                    onVerifyCalibration(
+                                        detail,
+                                        allowed,
+                                        verificationNotes,
+                                    ) ?: "Calibration profile validated. SPL display remains disabled pending the remaining Phase 2 activation gates."
+                                }
+                        },
+                    ) {
+                        Text("Use this session to verify")
+                    }
+                } else if (profile.status == RootlessCalibrationStatus.VALIDATED) {
+                    Text(
+                        "The active profile is validated. SPL display remains disabled until the remaining Phase 2 activation gates are complete.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                TextButton(onClick = onClearCalibration) {
+                    Text("Clear active calibration")
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Create calibration draft from this session",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "This saved session becomes reference observation #1. It must be at least 10 s, unclipped, and recorded while the physical reference was actually present.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
+            Text("Reference method", fontWeight = FontWeight.SemiBold)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                RootlessReferenceMethod.entries.forEach { method ->
+                    if (referenceMethod == method) {
+                        Button(onClick = { referenceMethod = method }) {
+                            Text(method.displayLabel())
+                        }
+                    } else {
+                        TextButton(onClick = { referenceMethod = method }) {
+                            Text(method.displayLabel())
+                        }
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = equipmentDescription,
+                onValueChange = { equipmentDescription = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reference equipment / source") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = equipmentIdentifier,
+                onValueChange = { equipmentIdentifier = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Equipment identifier / serial · optional") },
+                singleLine = true,
+            )
             OutlinedTextField(
                 value = referenceLevelText,
                 onValueChange = { referenceLevelText = it },
@@ -892,41 +1042,88 @@ private fun SavedSessionDetailCard(
                 singleLine = true,
             )
             OutlinedTextField(
-                value = referenceMethod,
-                onValueChange = { referenceMethod = it },
+                value = referenceFrequencyText,
+                onValueChange = { referenceFrequencyText = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Reference method / equipment") },
+                label = { Text("Reference frequency · Hz · optional") },
                 singleLine = true,
             )
             OutlinedTextField(
-                value = referenceNotes,
-                onValueChange = { referenceNotes = it },
+                value = referenceUncertaintyText,
+                onValueChange = { referenceUncertaintyText = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Reference notes / geometry") },
+                label = { Text("Reference uncertainty · dB · optional") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceGeometry,
+                onValueChange = { referenceGeometry = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Geometry / coupling") },
+            )
+            OutlinedTextField(
+                value = environmentNotes,
+                onValueChange = { environmentNotes = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Environment notes") },
+            )
+            OutlinedTextField(
+                value = procedureNotes,
+                onValueChange = { procedureNotes = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Procedure notes") },
             )
             Button(
                 onClick = {
                     val level = referenceLevelText.toDoubleOrNull()
-                    referenceMessage =
-                        if (level == null) {
-                            "Enter a numeric reference SPL."
-                        } else {
-                            onCreateReferenceAdjustment(
-                                detail,
-                                level,
-                                referenceMethod,
-                                referenceNotes,
-                            ) ?: "Active reference adjustment stored. SPL remains disabled pending the physical reference gate."
+                    val frequency =
+                        referenceFrequencyText.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+                    val uncertainty =
+                        referenceUncertaintyText.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+
+                    calibrationMessage =
+                        when {
+                            level == null ->
+                                "Enter a numeric reference SPL."
+                            equipmentDescription.isBlank() ->
+                                "Enter the physical reference equipment or source."
+                            referenceGeometry.isBlank() ->
+                                "Document the geometry or coupling."
+                            referenceFrequencyText.isNotBlank() && frequency == null ->
+                                "Reference frequency must be numeric when provided."
+                            referenceUncertaintyText.isNotBlank() &&
+                                (uncertainty == null || uncertainty < 0.0) ->
+                                "Reference uncertainty must be a non-negative number."
+                            else ->
+                                onCreateCalibrationDraft(
+                                    detail,
+                                    CalibrationDraftInput(
+                                        method = referenceMethod,
+                                        equipmentDescription = equipmentDescription,
+                                        equipmentIdentifier = equipmentIdentifier,
+                                        referenceLevelDbSpl = level,
+                                        referenceFrequencyHz = frequency,
+                                        referenceUncertaintyDb = uncertainty,
+                                        geometry = referenceGeometry,
+                                        environmentNotes = environmentNotes,
+                                        procedureNotes = procedureNotes,
+                                    ),
+                                ) ?: "Calibration draft stored as observation #1. Record a second session under the same reference to verify it. SPL remains disabled."
                         }
                 },
             ) {
-                Text("Store as active reference")
+                Text("Store calibration draft")
             }
-            referenceMessage?.let { message ->
+            calibrationMessage?.let { message ->
                 Text(
                     message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color =
+                        if (message.startsWith("Verification failed")) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
                 )
             }
         }
@@ -984,6 +1181,12 @@ private fun AgcRequest.displayLabel(): String = when (this) {
     AgcRequest.DEFAULT -> "Default"
     AgcRequest.FORCE_OFF -> "Off"
     AgcRequest.FORCE_ON -> "On"
+}
+
+private fun RootlessReferenceMethod.displayLabel(): String = when (this) {
+    RootlessReferenceMethod.ACOUSTIC_CALIBRATOR -> "Acoustic calibrator"
+    RootlessReferenceMethod.REFERENCE_SOUND_LEVEL_METER -> "Reference sound-level meter"
+    RootlessReferenceMethod.DOCUMENTED_COMPARISON_SOURCE -> "Documented comparison source"
 }
 
 private fun dbToY(db: Double, height: Float): Float {
