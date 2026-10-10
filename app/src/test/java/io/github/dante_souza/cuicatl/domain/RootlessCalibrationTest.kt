@@ -116,6 +116,39 @@ class RootlessCalibrationTest {
         assertEquals(200L, snapshot.validatedAtUtcEpochMillis)
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun validatedProfileRejectsMissingPhysicalReferenceConfirmation() {
+        val unconfirmedProcedure = procedure.copy(physicalReferenceConfirmed = false)
+        RootlessCalibrationProfile(
+            id = "cal-1",
+            version = 1,
+            sourceSessionId = "session-1",
+            adjustment = adjustment,
+            procedure = unconfirmedProcedure,
+            verification = verification,
+            status = RootlessCalibrationStatus.VALIDATED,
+            createdAtUtcEpochMillis = 100L,
+            validatedAtUtcEpochMillis = 200L,
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun validatedProfileRejectsMissingRepeatabilityConfirmation() {
+        val unconfirmedVerification =
+            verification.copy(sameReferenceConditionsConfirmed = false)
+        RootlessCalibrationProfile(
+            id = "cal-1",
+            version = 1,
+            sourceSessionId = "session-1",
+            adjustment = adjustment,
+            procedure = procedure,
+            verification = unconfirmedVerification,
+            status = RootlessCalibrationStatus.VALIDATED,
+            createdAtUtcEpochMillis = 100L,
+            validatedAtUtcEpochMillis = 200L,
+        )
+    }
+
     @Test fun verificationRecordsAndChecksDrift() {
         val failed = RootlessCalibrationVerification(
             beforeMeasuredLevelDbfs = -40.0,
