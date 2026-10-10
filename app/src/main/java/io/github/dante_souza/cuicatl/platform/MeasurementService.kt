@@ -23,6 +23,10 @@ import io.github.dante_souza.cuicatl.domain.MeasurementInputConfiguration
 import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
 import io.github.dante_souza.cuicatl.domain.ReferenceAdjustmentFactory
 import io.github.dante_souza.cuicatl.domain.RootlessCalibrationProfile
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationStatus
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationVerification
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceProcedure
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionCommandPolicy
 import io.github.dante_souza.cuicatl.domain.SessionOutcome
@@ -176,6 +180,161 @@ class MeasurementService : Service() {
         }.getOrElse { error ->
             "Could not persist draft calibration profile: " +
                 (error.message ?: error::class.java.simpleName)
+        }
+    }
+
+    fun createRootlessCalibrationDraft(
+        sessionId: String,
+        method: RootlessReferenceMethod,
+        equipmentDescription: String,
+        equipmentIdentifier: String,
+        referenceLevelDbSpl: Double,
+        referenceFrequencyHz: Double?,
+        referenceUncertaintyDb: Double?,
+        geometry: String,
+        environmentNotes: String,
+        procedureNotes: String,
+    ): String? {
+        if (equipmentDescription.isBlank()) {
+            return "Reference equipment/source description is required."
+        }
+        if (geometry.isBlank()) {
+            return "Reference geometry/coupling is required."
+        }
+
+        val procedure =
+            runCatching {
+                RootlessReferenceProcedure(
+                    method = method,
+                    equipmentDescription = equipmentDescription.trim(),
+                    equipmentIdentifier = equipmentIdentifier.trim(),
+                    referenceLevelDbSpl = referenceLevelDbSpl,
+                    referenceFrequencyHz = referenceFrequencyHz,
+                    referenceUncertaintyDb = referenceUncertaintyDb,
+                    geometry = geometry.trim(),
+                    environmentNotes = environmentNotes.trim(),
+                    procedureNotes = procedureNotes.trim(),
+                )
+            }.getOrElse { error ->
+                return error.message ?: "Reference procedure is invalid."
+            }
+
+        val detail =
+            repository.loadSession(sessionId)
+                ?: return "Saved session could not be loaded."
+        val adjustmentMethod =
+            method.name + " · " + equipmentDescription.trim()
+        val candidate = ReferenceAdjustmentFactory.fromSavedSession(
+            detail = detail,
+            deviceModel = Build.MODEL,
+            referenceLevelDbSpl = referenceLevelDbSpl,
+            referenceMethod = adjustmentMethod,
+            createdAtUtcEpochMillis = System.currentTimeMillis(),
+            notes = procedureNotes.trim(),
+        )
+        val adjustment =
+            candidate.adjustment
+                ?: return candidate.rejectionReason
+                    ?: "Reference session was rejected."
+
+        return runCatching {
+            calibrationRepository.saveDraft(
+                adjustment = adjustment,
+                sourceSessionId = sessionId,
+                procedure = procedure,
+            )
+            referenceRepository.clearActive()
+            null
+        }.getOrElse { error ->
+            "Could not persist calibration draft: " +
+                (error.message ?: error::class.java.simpleName)
+        }
+    }
+
+    fun verifyActiveRootlessCalibration(
+        verificationSessionId: String,
+        maximumAllowedDriftDb: Double,
+        notes: String,
+    ): String? {
+        val active =
+            calibrationRepository.loadActive()
+                ?: return "No active calibration draft."
+        if (active.status == RootlessCalibrationStatus.VALIDATED) {
+            return "The active calibration profile is already validated."
+        }
+        if (verificationSessionId == active.sourceSessionId) {
+            return "Verification requires a second saved measurement session."
+        }
+        if (!maximumAllowedDriftDb.isFinite() || maximumAllowedDriftDb < 0.0) {
+            return "Maximum allowed drift must be a non-negative number."
+        }
+
+        val detail =
+            repository.loadSession(verificationSessionId)
+                ?: return "Verification session could not be loaded."
+        val candidate = ReferenceAdjustmentFactory.fromSavedSession(
+            detail = detail,
+            deviceModel = Build.MODEL,
+            referenceLevelDbSpl = active.adjustment.referenceLevelDbSpl,
+            referenceMethod = active.adjustment.referenceMethod,
+            createdAtUtcEpochMillis = System.currentTimeMillis(),
+            notes = notes.trim(),
+        )
+        val observation =
+            candidate.adjustment
+                ?: return candidate.rejectionReason
+                    ?: "Verification session was rejected."
+
+        val configuration = MeasurementInputConfiguration(
+            deviceModel = observation.deviceModel,
+            inputIdentity = observation.inputIdentity,
+            audioSource = observation.audioSource,
+            sampleRateHz = observation.sampleRateHz,
+            sampleFormat = observation.sampleFormat,
+            frequencyWeighting = observation.frequencyWeighting,
+        )
+        val mismatches = active.adjustment.mismatches(configuration)
+        if (mismatches.isNotEmpty()) {
+            return "Verification session profile mismatch: " +
+                mismatches.joinToString(", ") {
+                    it.name.lowercase().replace('_', ' ')
+                }
+        }
+
+        val verification =
+            runCatching {
+                RootlessCalibrationVerification(
+                    beforeMeasuredLevelDbfs =
+                        active.adjustment.measuredReferenceLevelDbfs,
+                    afterMeasuredLevelDbfs =
+                        observation.measuredReferenceLevelDbfs,
+                    maximumAllowedDriftDb = maximumAllowedDriftDb,
+                    observationCount = 2,
+                    notes = notes.trim(),
+                )
+            }.getOrElse { error ->
+                return error.message ?: "Verification evidence is invalid."
+            }
+
+        val revised =
+            runCatching {
+                calibrationRepository.recordActiveVerification(
+                    verification = verification,
+                    observedAtUtcEpochMillis = System.currentTimeMillis(),
+                )
+            }.getOrElse { error ->
+                return "Could not persist verification result: " +
+                    (error.message ?: error::class.java.simpleName)
+            }
+
+        return if (revised.status == RootlessCalibrationStatus.VALIDATED) {
+            null
+        } else {
+            "Verification failed: observed drift " +
+                String.format(java.util.Locale.US, "%.2f dB", verification.observedDriftDb) +
+                " exceeds allowed " +
+                String.format(java.util.Locale.US, "%.2f dB", maximumAllowedDriftDb) +
+                ". Draft retained with failed evidence."
         }
     }
 
