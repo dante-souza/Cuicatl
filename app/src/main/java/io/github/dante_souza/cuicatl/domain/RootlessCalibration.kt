@@ -16,6 +16,7 @@ data class RootlessReferenceProcedure(
     val referenceLevelDbSpl: Double,
     val referenceFrequencyHz: Double? = null,
     val referenceUncertaintyDb: Double? = null,
+    val physicalReferenceConfirmed: Boolean = false,
     val geometry: String,
     val environmentNotes: String = "",
     val procedureNotes: String = "",
@@ -46,6 +47,7 @@ data class RootlessCalibrationVerification(
     val observationCount: Int,
     val verificationSessionId: String = "",
     val observedAtUtcEpochMillis: Long = 0L,
+    val sameReferenceConditionsConfirmed: Boolean = false,
     val notes: String = "",
 ) {
     init {
@@ -128,8 +130,10 @@ data class RootlessCalibrationProfile(
                 (
                     verification != null &&
                         verification.passes &&
+                        procedure.physicalReferenceConfirmed &&
                         verification.verificationSessionId.isNotBlank() &&
                         verification.observedAtUtcEpochMillis > 0L &&
+                        verification.sameReferenceConditionsConfirmed &&
                         validatedAtUtcEpochMillis != null
                 )
         ) {

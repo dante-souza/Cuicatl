@@ -38,6 +38,7 @@ class RootlessCalibrationTest {
         equipmentIdentifier = "REF-001",
         referenceLevelDbSpl = 80.0,
         referenceUncertaintyDb = 0.5,
+        physicalReferenceConfirmed = true,
         geometry = "Side-by-side microphones in the same stable sound field",
     )
 
@@ -48,6 +49,7 @@ class RootlessCalibrationTest {
         observationCount = 2,
         verificationSessionId = "session-2",
         observedAtUtcEpochMillis = 200L,
+        sameReferenceConditionsConfirmed = true,
     )
 
     @Test fun draftProfileNeverEnablesSpl() {
