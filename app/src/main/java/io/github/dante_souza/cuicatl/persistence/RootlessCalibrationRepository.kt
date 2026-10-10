@@ -73,9 +73,10 @@ class RootlessCalibrationRepository(context: Context) {
         }
     }
 
-    fun saveDraftFromAdjustment(
+    fun saveDraft(
         adjustment: ReferenceAdjustment,
         sourceSessionId: String,
+        procedure: RootlessReferenceProcedure,
     ): RootlessCalibrationProfile {
         val profileId = "cal-" + sourceSessionId
         val profile = RootlessCalibrationProfile(
@@ -83,6 +84,24 @@ class RootlessCalibrationRepository(context: Context) {
             version = nextVersion(profileId),
             sourceSessionId = sourceSessionId,
             adjustment = adjustment,
+            procedure = procedure,
+            verification = null,
+            status = RootlessCalibrationStatus.DRAFT,
+            createdAtUtcEpochMillis = adjustment.createdAtUtcEpochMillis,
+            validatedAtUtcEpochMillis = null,
+        )
+        saveNew(profile)
+        setActive(profile)
+        return profile
+    }
+
+    fun saveDraftFromAdjustment(
+        adjustment: ReferenceAdjustment,
+        sourceSessionId: String,
+    ): RootlessCalibrationProfile =
+        saveDraft(
+            adjustment = adjustment,
+            sourceSessionId = sourceSessionId,
             procedure = RootlessReferenceProcedure(
                 method = RootlessReferenceMethod.DOCUMENTED_COMPARISON_SOURCE,
                 equipmentDescription = adjustment.referenceMethod,
@@ -94,14 +113,31 @@ class RootlessCalibrationRepository(context: Context) {
                     adjustment.notes.takeIf { it.isNotBlank() }
                         ?: "Migrated/drafted from Phase 2C.1 reference-adjustment input.",
             ),
-            verification = null,
-            status = RootlessCalibrationStatus.DRAFT,
-            createdAtUtcEpochMillis = adjustment.createdAtUtcEpochMillis,
-            validatedAtUtcEpochMillis = null,
         )
-        saveNew(profile)
-        setActive(profile)
-        return profile
+
+    fun recordActiveVerification(
+        verification: RootlessCalibrationVerification,
+        observedAtUtcEpochMillis: Long,
+    ): RootlessCalibrationProfile {
+        val active =
+            loadActive()
+                ?: error("No active calibration profile")
+        val validated = verification.passes
+        val revised = active.copy(
+            version = nextVersion(active.id),
+            verification = verification,
+            status =
+                if (validated) {
+                    RootlessCalibrationStatus.VALIDATED
+                } else {
+                    RootlessCalibrationStatus.DRAFT
+                },
+            validatedAtUtcEpochMillis =
+                if (validated) observedAtUtcEpochMillis else null,
+        )
+        saveNew(revised)
+        setActive(revised)
+        return revised
     }
 
     fun migrateLegacyActiveAdjustment(
