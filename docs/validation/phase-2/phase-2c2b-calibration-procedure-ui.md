@@ -149,3 +149,26 @@ Physical draft creation and successful verification are deferred until a real re
 - final UI labeling review.
 
 Until those gates pass, Cuicatl remains a digital A/Z meter.
+
+
+## J8 UI rejection-path validation — 2026-10-10
+
+On-device validation on the dedicated Samsung Galaxy J8 confirmed the no-fabricated-calibration gate.
+
+Test inputs were deliberately synthetic UI-validation values:
+
+- reference level: 80 dB SPL;
+- reference frequency: 1000 Hz;
+- reference uncertainty: 1 dB;
+- geometry: UI-test-only text;
+- environment/procedure notes explicitly marked as synthetic/UI validation.
+
+The **physical reference present** confirmation remained unchecked.
+
+After pressing **Store calibration draft**, Cuicatl refused the operation and displayed:
+
+`Confirm that the physical reference was actually present.`
+
+Result: **PASS**.
+
+No calibration draft was intentionally created from the synthetic values, and the successful/VALIDATED physical-reference path remains deferred until real reference equipment/source is available.
