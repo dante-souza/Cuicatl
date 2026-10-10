@@ -316,6 +316,14 @@ class RootlessCalibrationRepository(context: Context) {
                     verification.observationCount.toString(),
                 )
                 setProperty(
+                    KEY_VERIFICATION_SESSION_ID,
+                    verification.verificationSessionId,
+                )
+                setProperty(
+                    KEY_VERIFICATION_OBSERVED_AT_UTC_MS,
+                    verification.observedAtUtcEpochMillis.toString(),
+                )
+                setProperty(
                     KEY_VERIFICATION_NOTES,
                     verification.notes,
                 )
@@ -398,6 +406,15 @@ class RootlessCalibrationRepository(context: Context) {
                             p.getProperty(
                                 KEY_VERIFICATION_OBSERVATION_COUNT,
                             ).toInt(),
+                        verificationSessionId =
+                            p.getProperty(
+                                KEY_VERIFICATION_SESSION_ID,
+                            ).orEmpty(),
+                        observedAtUtcEpochMillis =
+                            p.getProperty(
+                                KEY_VERIFICATION_OBSERVED_AT_UTC_MS,
+                                "0",
+                            ).toLong(),
                         notes =
                             p.getProperty(
                                 KEY_VERIFICATION_NOTES,
@@ -512,6 +529,10 @@ class RootlessCalibrationRepository(context: Context) {
             "verification_max_drift_db"
         const val KEY_VERIFICATION_OBSERVATION_COUNT =
             "verification_observation_count"
+        const val KEY_VERIFICATION_SESSION_ID =
+            "verification_session_id"
+        const val KEY_VERIFICATION_OBSERVED_AT_UTC_MS =
+            "verification_observed_at_utc_ms"
         const val KEY_VERIFICATION_NOTES = "verification_notes"
     }
 }
