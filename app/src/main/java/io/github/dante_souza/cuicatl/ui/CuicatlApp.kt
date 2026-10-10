@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,8 +55,6 @@ import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
-import io.github.dante_souza.cuicatl.domain.MeasurementInputConfiguration
-import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
 import io.github.dante_souza.cuicatl.domain.RootlessCalibrationEvidenceState
 import io.github.dante_souza.cuicatl.domain.RootlessCalibrationProfile
 import io.github.dante_souza.cuicatl.domain.RootlessCalibrationStatus
@@ -102,7 +99,6 @@ fun CuicatlApp() {
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
     var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
-    var activeReferenceAdjustment by remember { mutableStateOf<ReferenceAdjustment?>(null) }
     var activeCalibrationProfile by remember { mutableStateOf<RootlessCalibrationProfile?>(null) }
     val scrollState = rememberScrollState()
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
@@ -131,8 +127,6 @@ fun CuicatlApp() {
         } else {
             savedSessions = measurementService.savedSessions()
             activeCalibrationProfile = measurementService.activeRootlessCalibrationProfile()
-            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
-                ?: measurementService.activeReferenceAdjustment()
             selectedSessionId?.let { selectedId ->
                 selectedDetail = measurementService.loadSavedSession(selectedId)
             }
@@ -283,7 +277,6 @@ fun CuicatlApp() {
                             ) ?: "Measurement service is unavailable."
                             activeCalibrationProfile =
                                 measurementService?.activeRootlessCalibrationProfile()
-                            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
                             error
                         },
                         onVerifyCalibration = { detail, allowedDrift, notes ->
@@ -300,7 +293,6 @@ fun CuicatlApp() {
                         onClearCalibration = {
                             measurementService?.clearReferenceAdjustment()
                             activeCalibrationProfile = null
-                            activeReferenceAdjustment = null
                         },
                         onDeleteSession = { detail ->
                             val deleted = measurementService?.deleteSavedSession(detail.session.id) == true
@@ -310,7 +302,6 @@ fun CuicatlApp() {
                                 savedSessions = measurementService?.savedSessions().orEmpty()
                                 activeCalibrationProfile =
                                     measurementService?.activeRootlessCalibrationProfile()
-                                activeReferenceAdjustment = activeCalibrationProfile?.adjustment
                             }
                             deleted
                         },
@@ -334,7 +325,7 @@ fun CuicatlApp() {
 @Composable
 private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
-    activeReferenceAdjustment: ReferenceAdjustment?,
+    activeCalibrationProfile: RootlessCalibrationProfile?,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
     frequencyWeighting: FrequencyWeighting,
@@ -415,45 +406,43 @@ private fun MeterPage(
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            activeReferenceAdjustment?.let { active ->
-                val configuration =
-                    if (
-                        session != null &&
-                        session.source.isNotBlank() &&
-                        session.inputIdentity.isNotBlank() &&
-                        session.sampleRateHz > 0
-                    ) {
-                        MeasurementInputConfiguration(
-                            deviceModel = Build.MODEL,
-                            inputIdentity = session.inputIdentity,
-                            audioSource = session.source,
-                            sampleRateHz = session.sampleRateHz,
-                            sampleFormat = "PCM16_MONO",
-                            frequencyWeighting = effectiveWeighting,
-                        )
-                    } else {
-                        null
-                    }
-                val mismatches = configuration?.let(active::mismatches)
-                Text(
-                    when {
-                        configuration == null ->
-                            "Reference adjustment stored · compatibility will be checked after capture starts."
-                        mismatches.isNullOrEmpty() ->
-                            "Reference adjustment matches this capture configuration · SPL still disabled pending physical validation."
-                        else ->
-                            "Reference adjustment mismatch: " +
-                                mismatches.joinToString(", ") { it.name.lowercase().replace('_', ' ') } +
-                                " · SPL unavailable."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color =
-                        if (configuration != null && mismatches.isNullOrEmpty()) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.outline
+            val calibrationSnapshot = session?.calibrationSnapshot
+            when {
+                calibrationSnapshot != null -> {
+                    Text(
+                        when (calibrationSnapshot.evidenceState) {
+                            RootlessCalibrationEvidenceState.UNCALIBRATED ->
+                                "Session calibration snapshot: uncalibrated · profile " +
+                                    calibrationSnapshot.profileId + " v" +
+                                    calibrationSnapshot.profileVersion + "."
+                            RootlessCalibrationEvidenceState.PROFILE_MISMATCH ->
+                                "Session calibration snapshot: profile mismatch · SPL unavailable."
+                            RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE ->
+                                "Validated rootless profile matched at Start · " +
+                                    "SPL display remains disabled pending Phase 2 activation."
                         },
-                )
+                        style = MaterialTheme.typography.bodySmall,
+                        color =
+                            if (
+                                calibrationSnapshot.evidenceState ==
+                                RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE
+                            ) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outline
+                            },
+                    )
+                }
+                activeCalibrationProfile != null -> {
+                    Text(
+                        "Active calibration profile: " +
+                            activeCalibrationProfile.status.name.lowercase() +
+                            " · compatibility is frozen when capture starts. " +
+                            "SPL display remains disabled.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
             }
         }
     }
@@ -597,9 +586,10 @@ private fun HistoryPage(
     onSelect: (MeasurementSession) -> Unit,
     onBack: () -> Unit,
     onShare: (SavedSessionDetail) -> Unit,
-    activeReferenceAdjustment: ReferenceAdjustment?,
-    onCreateReferenceAdjustment: (SavedSessionDetail, Double, String, String) -> String?,
-    onClearReferenceAdjustment: () -> Unit,
+    activeCalibrationProfile: RootlessCalibrationProfile?,
+    onCreateCalibrationDraft: (SavedSessionDetail, CalibrationDraftInput) -> String?,
+    onVerifyCalibration: (SavedSessionDetail, Double, String) -> String?,
+    onClearCalibration: () -> Unit,
     onDeleteSession: (SavedSessionDetail) -> Boolean,
     onSanitizeSavedSessions: () -> Int,
 ) {
@@ -641,9 +631,10 @@ private fun HistoryPage(
             detail = selectedDetail,
             onBack = onBack,
             onShare = onShare,
-            activeReferenceAdjustment = activeReferenceAdjustment,
-            onCreateReferenceAdjustment = onCreateReferenceAdjustment,
-            onClearReferenceAdjustment = onClearReferenceAdjustment,
+            activeCalibrationProfile = activeCalibrationProfile,
+            onCreateCalibrationDraft = onCreateCalibrationDraft,
+            onVerifyCalibration = onVerifyCalibration,
+            onClearCalibration = onClearCalibration,
             onDeleteSession = onDeleteSession,
         )
         return
@@ -732,18 +723,29 @@ private fun SavedSessionDetailCard(
     detail: SavedSessionDetail,
     onBack: () -> Unit,
     onShare: (SavedSessionDetail) -> Unit,
-    activeReferenceAdjustment: ReferenceAdjustment?,
-    onCreateReferenceAdjustment: (SavedSessionDetail, Double, String, String) -> String?,
-    onClearReferenceAdjustment: () -> Unit,
+    activeCalibrationProfile: RootlessCalibrationProfile?,
+    onCreateCalibrationDraft: (SavedSessionDetail, CalibrationDraftInput) -> String?,
+    onVerifyCalibration: (SavedSessionDetail, Double, String) -> String?,
+    onClearCalibration: () -> Unit,
     onDeleteSession: (SavedSessionDetail) -> Boolean,
 ) {
     val session = detail.session
     var showDeleteConfirmation by remember(detail.session.id) { mutableStateOf(false) }
     var deleteMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
+    var referenceMethod by remember(detail.session.id) {
+        mutableStateOf(RootlessReferenceMethod.REFERENCE_SOUND_LEVEL_METER)
+    }
+    var equipmentDescription by remember(detail.session.id) { mutableStateOf("") }
+    var equipmentIdentifier by remember(detail.session.id) { mutableStateOf("") }
     var referenceLevelText by remember(detail.session.id) { mutableStateOf("") }
-    var referenceMethod by remember(detail.session.id) { mutableStateOf("") }
-    var referenceNotes by remember(detail.session.id) { mutableStateOf("") }
-    var referenceMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
+    var referenceFrequencyText by remember(detail.session.id) { mutableStateOf("") }
+    var referenceUncertaintyText by remember(detail.session.id) { mutableStateOf("") }
+    var referenceGeometry by remember(detail.session.id) { mutableStateOf("") }
+    var environmentNotes by remember(detail.session.id) { mutableStateOf("") }
+    var procedureNotes by remember(detail.session.id) { mutableStateOf("") }
+    var calibrationMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
+    var allowedDriftText by remember(detail.session.id) { mutableStateOf("") }
+    var verificationNotes by remember(detail.session.id) { mutableStateOf("") }
     val clippedFrames = detail.frames.count { it.clippedSampleCount > 0 }
     val clippedSamples = detail.frames.sumOf { it.clippedSampleCount.toLong() }
 
@@ -755,7 +757,7 @@ private fun SavedSessionDetailCard(
                 Text(
                     "This removes the app-private measurement record and any cached CSV created by Cuicatl. " +
                         "Copies already shared or saved elsewhere are not affected. " +
-                        "If this session is the source of the active reference adjustment, that adjustment is cleared.",
+                        "If this session is the source of calibration profiles, profiles derived from it are removed.",
                 )
             },
             confirmButton = {
