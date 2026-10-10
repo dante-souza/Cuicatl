@@ -58,6 +58,10 @@ import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
 import io.github.dante_souza.cuicatl.domain.MeasurementInputConfiguration
 import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationEvidenceState
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationProfile
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationStatus
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
 import io.github.dante_souza.cuicatl.platform.AndroidAudioProcessingCapabilities
@@ -74,6 +78,18 @@ private enum class AnalyzerPage(val label: String) {
     HISTORY("History"),
 }
 
+private data class CalibrationDraftInput(
+    val method: RootlessReferenceMethod,
+    val equipmentDescription: String,
+    val equipmentIdentifier: String,
+    val referenceLevelDbSpl: Double,
+    val referenceFrequencyHz: Double?,
+    val referenceUncertaintyDb: Double?,
+    val geometry: String,
+    val environmentNotes: String,
+    val procedureNotes: String,
+)
+
 @Composable
 fun CuicatlApp() {
     val context = LocalContext.current
@@ -87,6 +103,7 @@ fun CuicatlApp() {
     var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
     var activeReferenceAdjustment by remember { mutableStateOf<ReferenceAdjustment?>(null) }
+    var activeCalibrationProfile by remember { mutableStateOf<RootlessCalibrationProfile?>(null) }
     val scrollState = rememberScrollState()
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var permissionGranted by remember {
@@ -113,7 +130,9 @@ fun CuicatlApp() {
             onDispose { }
         } else {
             savedSessions = measurementService.savedSessions()
-            activeReferenceAdjustment = measurementService.activeReferenceAdjustment()
+            activeCalibrationProfile = measurementService.activeRootlessCalibrationProfile()
+            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
+                ?: measurementService.activeReferenceAdjustment()
             selectedSessionId?.let { selectedId ->
                 selectedDetail = measurementService.loadSavedSession(selectedId)
             }
@@ -192,7 +211,7 @@ fun CuicatlApp() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Phase 2 · digital A/Z meter (uncalibrated)",
+                text = "Phase 2 · digital A/Z meter · rootless calibration gated",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -201,7 +220,7 @@ fun CuicatlApp() {
                 AnalyzerPage.METER -> {
                     MeterPage(
                         snapshot = snapshot,
-                        activeReferenceAdjustment = activeReferenceAdjustment,
+                        activeCalibrationProfile = activeCalibrationProfile,
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
                         frequencyWeighting = frequencyWeighting,
@@ -248,19 +267,39 @@ fun CuicatlApp() {
                                 shareCsv(context, file)
                             }
                         },
-                        activeReferenceAdjustment = activeReferenceAdjustment,
-                        onCreateReferenceAdjustment = { detail, level, method, notes ->
-                            val error = measurementService?.createReferenceAdjustment(
+                        activeCalibrationProfile = activeCalibrationProfile,
+                        onCreateCalibrationDraft = { detail, input ->
+                            val error = measurementService?.createRootlessCalibrationDraft(
                                 sessionId = detail.session.id,
-                                referenceLevelDbSpl = level,
-                                referenceMethod = method,
-                                notes = notes,
+                                method = input.method,
+                                equipmentDescription = input.equipmentDescription,
+                                equipmentIdentifier = input.equipmentIdentifier,
+                                referenceLevelDbSpl = input.referenceLevelDbSpl,
+                                referenceFrequencyHz = input.referenceFrequencyHz,
+                                referenceUncertaintyDb = input.referenceUncertaintyDb,
+                                geometry = input.geometry,
+                                environmentNotes = input.environmentNotes,
+                                procedureNotes = input.procedureNotes,
                             ) ?: "Measurement service is unavailable."
-                            activeReferenceAdjustment = measurementService?.activeReferenceAdjustment()
+                            activeCalibrationProfile =
+                                measurementService?.activeRootlessCalibrationProfile()
+                            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
                             error
                         },
-                        onClearReferenceAdjustment = {
+                        onVerifyCalibration = { detail, allowedDrift, notes ->
+                            val error = measurementService?.verifyActiveRootlessCalibration(
+                                verificationSessionId = detail.session.id,
+                                maximumAllowedDriftDb = allowedDrift,
+                                notes = notes,
+                            ) ?: "Measurement service is unavailable."
+                            activeCalibrationProfile =
+                                measurementService?.activeRootlessCalibrationProfile()
+                            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
+                            error
+                        },
+                        onClearCalibration = {
                             measurementService?.clearReferenceAdjustment()
+                            activeCalibrationProfile = null
                             activeReferenceAdjustment = null
                         },
                         onDeleteSession = { detail ->
@@ -269,7 +308,9 @@ fun CuicatlApp() {
                                 selectedDetail = null
                                 selectedSessionId = null
                                 savedSessions = measurementService?.savedSessions().orEmpty()
-                                activeReferenceAdjustment = measurementService?.activeReferenceAdjustment()
+                                activeCalibrationProfile =
+                                    measurementService?.activeRootlessCalibrationProfile()
+                                activeReferenceAdjustment = activeCalibrationProfile?.adjustment
                             }
                             deleted
                         },
@@ -278,7 +319,9 @@ fun CuicatlApp() {
                             selectedDetail = null
                             selectedSessionId = null
                             savedSessions = measurementService?.savedSessions().orEmpty()
-                            activeReferenceAdjustment = measurementService?.activeReferenceAdjustment()
+                            activeCalibrationProfile =
+                                measurementService?.activeRootlessCalibrationProfile()
+                            activeReferenceAdjustment = activeCalibrationProfile?.adjustment
                             deleted
                         },
                     )
