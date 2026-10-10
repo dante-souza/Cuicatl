@@ -301,6 +301,7 @@ class MeasurementService : Service() {
                 }
         }
 
+        val observedAtUtcEpochMillis = System.currentTimeMillis()
         val verification =
             runCatching {
                 RootlessCalibrationVerification(
@@ -310,6 +311,8 @@ class MeasurementService : Service() {
                         observation.measuredReferenceLevelDbfs,
                     maximumAllowedDriftDb = maximumAllowedDriftDb,
                     observationCount = 2,
+                    verificationSessionId = verificationSessionId,
+                    observedAtUtcEpochMillis = observedAtUtcEpochMillis,
                     notes = notes.trim(),
                 )
             }.getOrElse { error ->
@@ -320,7 +323,7 @@ class MeasurementService : Service() {
             runCatching {
                 calibrationRepository.recordActiveVerification(
                     verification = verification,
-                    observedAtUtcEpochMillis = System.currentTimeMillis(),
+                    observedAtUtcEpochMillis = observedAtUtcEpochMillis,
                 )
             }.getOrElse { error ->
                 return "Could not persist verification result: " +
