@@ -1,7 +1,7 @@
 # Phase 2C.2 — rootless calibration validation gate
 
 Date: 2026-10-10  
-Status: **domain architecture locally validated; Phase 2C.2a persistence/migration implemented and awaiting local build**
+Status: **domain architecture locally validated; Phase 2C.2a persistence and Phase 2C.2b procedure/verification UI implemented; combined local build pending**
 
 ## Deterministic gate tests
 
@@ -32,8 +32,8 @@ Before SPL is visible in the app:
 
 - persist `RootlessCalibrationProfile`;
 - migrate/interpret existing 2C.1 adjustment storage without silently validating it;
-- add procedure + verification UI;
-- snapshot validated profile identity into each session at Start;
+- ~~add procedure + verification UI;~~ implemented in Phase 2C.2b;
+- ~~snapshot validated profile identity into each session at Start;~~ implemented in Phase 2C.2a;
 - decide and implement the Phase 2 export schema;
 - run physical J8 reference procedure;
 - retain screenshots, CSV, profile record, APK hash and procedure notes.
@@ -79,3 +79,31 @@ SPL display remains disabled. A draft profile snapshots as `UNCALIBRATED`; a mis
 ### Next local gate
 
 Run `make check` again against the Phase 2C.2a head before device installation.
+
+
+## Phase 2C.2b — procedure and verification UI
+
+Implemented:
+
+- full physical-reference provenance form in saved-session detail;
+- reference-method selector for acoustic calibrator, reference SLM, or documented comparison source;
+- equipment/source description and optional identifier;
+- reference SPL, optional frequency and uncertainty;
+- mandatory geometry/coupling;
+- environment/procedure notes;
+- explicit physical-reference-present confirmation;
+- immutable observation #1 draft profile;
+- observation #2 based on a different saved session;
+- exact capture-profile matching before verification;
+- user-declared maximum drift plus Cuicatl-computed before/after weighted Leq drift;
+- explicit same-reference/geometry/conditions confirmation;
+- persisted verification-session ID and timestamp;
+- failed verification retained as a new DRAFT profile version;
+- passing verification retained as a new VALIDATED profile version;
+- Meter displays the session's frozen calibration snapshot rather than reinterpreting the session from the current active profile.
+
+The service rejects missing physical-reference confirmations independently of the UI.
+
+Numeric SPL display remains disabled.
+
+See `docs/validation/phase-2/phase-2c2b-calibration-procedure-ui.md` for the device workflow and the no-fabricated-calibration rule.
