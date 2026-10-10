@@ -83,3 +83,19 @@ Estimated SPL must remain disabled until the actual reference procedure is docum
 - limitations and repeatability observations.
 
 If no suitable reference is available, Phase 2 continues as a digital A/Z meter and records reference-adjusted SPL as blocked rather than inventing calibration evidence.
+
+
+## Phase 2C.2 rootless-calibration authority
+
+From Phase 2C.2 onward, a stored `ReferenceAdjustment` is an arithmetic component, not sufficient evidence to display SPL.
+
+The application-level authority is a validated `RootlessCalibrationProfile` containing:
+
+- physical reference provenance;
+- repeatability verification;
+- immutable reference-adjustment data;
+- the existing exact capture-configuration matcher.
+
+Root privileges, mixer-register visibility and vendor hardware metadata are excluded from the runtime calibration contract. They may support laboratory archaeology only.
+
+The full contract is in `docs/architecture/phase-2c2-rootless-calibration.md`.

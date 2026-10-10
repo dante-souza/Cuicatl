@@ -67,7 +67,7 @@ Existing ReferenceAdjustmentTest continues to cover configuration mismatch suppr
 
 ## Next gate
 
-Phase 2C.2 — physical reference procedure and reference-adjusted SPL activation — requires an actual suitable reference setup. If suitable equipment/reference is unavailable, record SPL activation as blocked and retain the digital A/Z meter.
+Phase 2C.2 now defines the rootless calibration architecture above the 2C.1 numeric adjustment. The 2C.1 record remains a draft arithmetic/provenance component until it is wrapped by a validated rootless profile. Physical SPL activation still requires an actual suitable external reference setup; if unavailable, record activation as blocked and retain the digital A/Z meter.
 
 
 ## J8 retention/sanitization validation — 2026-10-09
