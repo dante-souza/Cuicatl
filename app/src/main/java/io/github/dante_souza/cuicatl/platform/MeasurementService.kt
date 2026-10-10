@@ -78,7 +78,9 @@ class MeasurementService : Service() {
         exporter = MeasurementCsvExporter(this)
         referenceRepository = ReferenceAdjustmentRepository(this)
         calibrationRepository = RootlessCalibrationRepository(this)
-        calibrationRepository.migrateLegacyActiveAdjustment(referenceRepository)
+        runCatching {
+            calibrationRepository.migrateLegacyActiveAdjustment(referenceRepository)
+        }
         val recovered = repository.recoverInterruptedSessions()
         if (recovered > 0) {
             runtimeSnapshot = SessionRuntimeSnapshot(
