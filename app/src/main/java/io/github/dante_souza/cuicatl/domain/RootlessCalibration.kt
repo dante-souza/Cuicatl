@@ -89,6 +89,17 @@ data class RootlessCalibrationDecision(
         get() = state == RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE
 }
 
+
+data class CalibrationSessionSnapshot(
+    val profileId: String,
+    val profileVersion: Int,
+    val evidenceState: RootlessCalibrationEvidenceState,
+    val referenceMethod: RootlessReferenceMethod,
+    val referenceLevelDbSpl: Double,
+    val referenceCorrectionDb: Double,
+    val validatedAtUtcEpochMillis: Long?,
+)
+
 data class RootlessCalibrationProfile(
     val id: String,
     val version: Int,
@@ -150,6 +161,19 @@ data class RootlessCalibrationProfile(
 
         return RootlessCalibrationDecision(
             state = RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE,
+        )
+    }
+
+    fun sessionSnapshot(configuration: MeasurementInputConfiguration): CalibrationSessionSnapshot {
+        val decision = evaluate(configuration)
+        return CalibrationSessionSnapshot(
+            profileId = id,
+            profileVersion = version,
+            evidenceState = decision.state,
+            referenceMethod = procedure.method,
+            referenceLevelDbSpl = adjustment.referenceLevelDbSpl,
+            referenceCorrectionDb = adjustment.correctionDb,
+            validatedAtUtcEpochMillis = validatedAtUtcEpochMillis,
         )
     }
 

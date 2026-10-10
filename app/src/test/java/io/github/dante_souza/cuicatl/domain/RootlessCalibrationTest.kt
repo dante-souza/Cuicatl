@@ -90,6 +90,28 @@ class RootlessCalibrationTest {
         assertNull(profile.adjustedLevelDbSplEstimate(-30.0, mismatch))
     }
 
+
+    @Test fun sessionSnapshotFreezesProfileIdentityAndEvidenceState() {
+        val profile = RootlessCalibrationProfile(
+            id = "cal-1", version = 3, sourceSessionId = "session-1",
+            adjustment = adjustment, procedure = procedure, verification = verification,
+            status = RootlessCalibrationStatus.VALIDATED,
+            createdAtUtcEpochMillis = 100L, validatedAtUtcEpochMillis = 200L,
+        )
+
+        val snapshot = profile.sessionSnapshot(config)
+        assertEquals("cal-1", snapshot.profileId)
+        assertEquals(3, snapshot.profileVersion)
+        assertEquals(
+            RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE,
+            snapshot.evidenceState,
+        )
+        assertEquals(RootlessReferenceMethod.REFERENCE_SOUND_LEVEL_METER, snapshot.referenceMethod)
+        assertEquals(80.0, snapshot.referenceLevelDbSpl, 1e-8)
+        assertEquals(120.0, snapshot.referenceCorrectionDb, 1e-8)
+        assertEquals(200L, snapshot.validatedAtUtcEpochMillis)
+    }
+
     @Test fun verificationRecordsAndChecksDrift() {
         val failed = RootlessCalibrationVerification(
             beforeMeasuredLevelDbfs = -40.0,
