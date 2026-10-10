@@ -19,8 +19,10 @@ import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.LevelStatisticsAccumulator
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
+import io.github.dante_souza.cuicatl.domain.MeasurementInputConfiguration
 import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
 import io.github.dante_souza.cuicatl.domain.ReferenceAdjustmentFactory
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationProfile
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionCommandPolicy
 import io.github.dante_souza.cuicatl.domain.SessionOutcome
@@ -29,6 +31,7 @@ import io.github.dante_souza.cuicatl.domain.SessionState
 import io.github.dante_souza.cuicatl.export.MeasurementCsvExporter
 import io.github.dante_souza.cuicatl.persistence.SessionRepository
 import io.github.dante_souza.cuicatl.persistence.ReferenceAdjustmentRepository
+import io.github.dante_souza.cuicatl.persistence.RootlessCalibrationRepository
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -44,6 +47,7 @@ class MeasurementService : Service() {
     private lateinit var repository: SessionRepository
     private lateinit var exporter: MeasurementCsvExporter
     private lateinit var referenceRepository: ReferenceAdjustmentRepository
+    private lateinit var calibrationRepository: RootlessCalibrationRepository
 
     @Volatile
     private var runtimeSnapshot = SessionRuntimeSnapshot()
@@ -73,6 +77,8 @@ class MeasurementService : Service() {
         repository = SessionRepository(this)
         exporter = MeasurementCsvExporter(this)
         referenceRepository = ReferenceAdjustmentRepository(this)
+        calibrationRepository = RootlessCalibrationRepository(this)
+        calibrationRepository.migrateLegacyActiveAdjustment(referenceRepository)
         val recovered = repository.recoverInterruptedSessions()
         if (recovered > 0) {
             runtimeSnapshot = SessionRuntimeSnapshot(
@@ -131,7 +137,12 @@ class MeasurementService : Service() {
     fun exportSavedSession(sessionId: String): File? =
         repository.loadSession(sessionId)?.let(exporter::export)
 
-    fun activeReferenceAdjustment(): ReferenceAdjustment? = referenceRepository.loadActive()
+    fun activeReferenceAdjustment(): ReferenceAdjustment? =
+        calibrationRepository.loadActive()?.adjustment
+            ?: referenceRepository.loadActive()
+
+    fun activeRootlessCalibrationProfile(): RootlessCalibrationProfile? =
+        calibrationRepository.loadActive()
 
     fun createReferenceAdjustment(
         sessionId: String,
@@ -148,12 +159,26 @@ class MeasurementService : Service() {
             createdAtUtcEpochMillis = System.currentTimeMillis(),
             notes = notes,
         )
-        val adjustment = candidate.adjustment ?: return candidate.rejectionReason ?: "Reference adjustment rejected."
-        referenceRepository.saveActive(adjustment)
-        return null
+        val adjustment =
+            candidate.adjustment
+                ?: return candidate.rejectionReason
+                    ?: "Reference adjustment rejected."
+
+        return runCatching {
+            calibrationRepository.saveDraftFromAdjustment(
+                adjustment = adjustment,
+                sourceSessionId = sessionId,
+            )
+            referenceRepository.clearActive()
+            null
+        }.getOrElse { error ->
+            "Could not persist draft calibration profile: " +
+                (error.message ?: error::class.java.simpleName)
+        }
     }
 
     fun clearReferenceAdjustment() {
+        calibrationRepository.clearActive()
         referenceRepository.clearActive()
     }
 
@@ -162,6 +187,7 @@ class MeasurementService : Service() {
         if (!deleted) return false
 
         exporter.deleteCachedExports(sessionId)
+        calibrationRepository.deleteProfilesFromSourceSession(sessionId)
         val activeReference = referenceRepository.loadActive()
         if (activeReference?.id == "ref-" + sessionId) {
             referenceRepository.clearActive()
@@ -172,6 +198,7 @@ class MeasurementService : Service() {
     fun sanitizeSavedSessions(): Int {
         val deleted = repository.deleteAllSavedSessions()
         exporter.clearCachedExports()
+        calibrationRepository.clearAll()
         referenceRepository.clearActive()
         return deleted
     }
@@ -224,12 +251,25 @@ class MeasurementService : Service() {
             agcRequest = agcRequest,
             frequencyWeighting = frequencyWeighting,
             onStarted = { configuration ->
+                val inputConfiguration = MeasurementInputConfiguration(
+                    deviceModel = Build.MODEL,
+                    inputIdentity = configuration.inputIdentity,
+                    audioSource = configuration.source,
+                    sampleRateHz = configuration.sampleRateHz,
+                    sampleFormat = SAMPLE_FORMAT,
+                    frequencyWeighting = frequencyWeighting,
+                )
+                val calibrationSnapshot =
+                    calibrationRepository.loadActive()
+                        ?.sessionSnapshot(inputConfiguration)
+
                 val runningSession = startingSession.copy(
                     state = SessionState.RUNNING,
                     source = configuration.source,
                     sampleRateHz = configuration.sampleRateHz,
                     inputIdentity = configuration.inputIdentity,
                     processingState = configuration.processingState,
+                    calibrationSnapshot = calibrationSnapshot,
                 )
                 writer = repository.beginSession(runningSession)
                 activeSession = runningSession
@@ -436,6 +476,7 @@ class MeasurementService : Service() {
         private const val CHANNEL_ID = "cuicatl_measurement"
         private const val NOTIFICATION_ID = 1001
         private const val MAX_LABEL_LENGTH = 120
+        private const val SAMPLE_FORMAT = "PCM16_MONO"
         private const val MAX_LIVE_HISTORY_FRAMES = 600
     }
 }
