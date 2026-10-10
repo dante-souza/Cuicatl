@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -82,6 +83,7 @@ private data class CalibrationDraftInput(
     val referenceLevelDbSpl: Double,
     val referenceFrequencyHz: Double?,
     val referenceUncertaintyDb: Double?,
+    val physicalReferenceConfirmed: Boolean,
     val geometry: String,
     val environmentNotes: String,
     val procedureNotes: String,
@@ -276,6 +278,7 @@ fun CuicatlApp() {
                                         referenceLevelDbSpl = input.referenceLevelDbSpl,
                                         referenceFrequencyHz = input.referenceFrequencyHz,
                                         referenceUncertaintyDb = input.referenceUncertaintyDb,
+                                        physicalReferenceConfirmed = input.physicalReferenceConfirmed,
                                         geometry = input.geometry,
                                         environmentNotes = input.environmentNotes,
                                         procedureNotes = input.procedureNotes,
@@ -285,7 +288,7 @@ fun CuicatlApp() {
                                 service?.activeRootlessCalibrationProfile()
                             error
                         },
-                        onVerifyCalibration = { detail, allowedDrift, notes ->
+                        onVerifyCalibration = { detail, allowedDrift, confirmed, notes ->
                             val service = measurementService
                             val error =
                                 if (service == null) {
@@ -294,6 +297,7 @@ fun CuicatlApp() {
                                     service.verifyActiveRootlessCalibration(
                                         verificationSessionId = detail.session.id,
                                         maximumAllowedDriftDb = allowedDrift,
+                                        sameReferenceConditionsConfirmed = confirmed,
                                         notes = notes,
                                     )
                                 }
@@ -598,7 +602,7 @@ private fun HistoryPage(
     onShare: (SavedSessionDetail) -> Unit,
     activeCalibrationProfile: RootlessCalibrationProfile?,
     onCreateCalibrationDraft: (SavedSessionDetail, CalibrationDraftInput) -> String?,
-    onVerifyCalibration: (SavedSessionDetail, Double, String) -> String?,
+    onVerifyCalibration: (SavedSessionDetail, Double, Boolean, String) -> String?,
     onClearCalibration: () -> Unit,
     onDeleteSession: (SavedSessionDetail) -> Boolean,
     onSanitizeSavedSessions: () -> Int,
@@ -735,7 +739,7 @@ private fun SavedSessionDetailCard(
     onShare: (SavedSessionDetail) -> Unit,
     activeCalibrationProfile: RootlessCalibrationProfile?,
     onCreateCalibrationDraft: (SavedSessionDetail, CalibrationDraftInput) -> String?,
-    onVerifyCalibration: (SavedSessionDetail, Double, String) -> String?,
+    onVerifyCalibration: (SavedSessionDetail, Double, Boolean, String) -> String?,
     onClearCalibration: () -> Unit,
     onDeleteSession: (SavedSessionDetail) -> Boolean,
 ) {
@@ -753,9 +757,13 @@ private fun SavedSessionDetailCard(
     var referenceGeometry by remember(detail.session.id) { mutableStateOf("") }
     var environmentNotes by remember(detail.session.id) { mutableStateOf("") }
     var procedureNotes by remember(detail.session.id) { mutableStateOf("") }
+    var physicalReferenceConfirmed by remember(detail.session.id) { mutableStateOf(false) }
     var calibrationMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
     var allowedDriftText by remember(detail.session.id) { mutableStateOf("") }
     var verificationNotes by remember(detail.session.id) { mutableStateOf("") }
+    var sameReferenceConditionsConfirmed by remember(detail.session.id) {
+        mutableStateOf(false)
+    }
     val clippedFrames = detail.frames.count { it.clippedSampleCount > 0 }
     val clippedSamples = detail.frames.sumOf { it.clippedSampleCount.toLong() }
 
@@ -974,18 +982,35 @@ private fun SavedSessionDetailCard(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Verification notes") },
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = sameReferenceConditionsConfirmed,
+                            onCheckedChange = { sameReferenceConditionsConfirmed = it },
+                        )
+                        Text(
+                            "I confirm the same physical reference, geometry and conditions were repeated.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     Button(
                         onClick = {
                             val allowed = allowedDriftText.toDoubleOrNull()
                             calibrationMessage =
-                                if (allowed == null || allowed < 0.0) {
-                                    "Enter a non-negative maximum allowed drift."
-                                } else {
-                                    onVerifyCalibration(
-                                        detail,
-                                        allowed,
-                                        verificationNotes,
-                                    ) ?: "Calibration profile validated. SPL display remains disabled pending the remaining Phase 2 activation gates."
+                                when {
+                                    allowed == null || allowed < 0.0 ->
+                                        "Enter a non-negative maximum allowed drift."
+                                    !sameReferenceConditionsConfirmed ->
+                                        "Confirm that the same physical reference setup was repeated."
+                                    else ->
+                                        onVerifyCalibration(
+                                            detail,
+                                            allowed,
+                                            true,
+                                            verificationNotes,
+                                        ) ?: "Calibration profile validated. SPL display remains disabled pending the remaining Phase 2 activation gates."
                                 }
                         },
                     ) {
@@ -1083,6 +1108,19 @@ private fun SavedSessionDetailCard(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Procedure notes") },
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = physicalReferenceConfirmed,
+                    onCheckedChange = { physicalReferenceConfirmed = it },
+                )
+                Text(
+                    "I confirm this session was recorded while the physical reference described above was actually present.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Button(
                 onClick = {
                     val level = referenceLevelText.toDoubleOrNull()
@@ -1104,6 +1142,8 @@ private fun SavedSessionDetailCard(
                             referenceUncertaintyText.isNotBlank() &&
                                 (uncertainty == null || uncertainty < 0.0) ->
                                 "Reference uncertainty must be a non-negative number."
+                            !physicalReferenceConfirmed ->
+                                "Confirm that the physical reference was actually present."
                             else ->
                                 onCreateCalibrationDraft(
                                     detail,
@@ -1114,6 +1154,7 @@ private fun SavedSessionDetailCard(
                                         referenceLevelDbSpl = level,
                                         referenceFrequencyHz = frequency,
                                         referenceUncertaintyDb = uncertainty,
+                                        physicalReferenceConfirmed = true,
                                         geometry = referenceGeometry,
                                         environmentNotes = environmentNotes,
                                         procedureNotes = procedureNotes,
