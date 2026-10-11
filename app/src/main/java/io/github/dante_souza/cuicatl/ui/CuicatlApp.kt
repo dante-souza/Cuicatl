@@ -63,6 +63,8 @@ import io.github.dante_souza.cuicatl.domain.RootlessCalibrationStatus
 import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
+import io.github.dante_souza.cuicatl.platform.AndroidAudioInputDiscovery
+import io.github.dante_souza.cuicatl.platform.DiscoveredAudioInput
 import io.github.dante_souza.cuicatl.platform.AndroidAudioProcessingCapabilities
 import io.github.dante_souza.cuicatl.platform.AndroidCaptureReadinessProvider
 import io.github.dante_souza.cuicatl.platform.MeasurementService
@@ -361,6 +363,9 @@ private fun MeterPage(
     val effectiveWeighting = if (isActive) session?.frequencyWeighting ?: frequencyWeighting else frequencyWeighting
     val effectiveAgcRequest =
         if (isActive) session?.agcRequest ?: agcRequest else agcRequest
+    val context = LocalContext.current
+    val inputDiscovery = remember(context) { AndroidAudioInputDiscovery(context) }
+    var discoveredInputs by remember { mutableStateOf<List<DiscoveredAudioInput>?>(null) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -636,6 +641,48 @@ private fun MeterPage(
                     Text(if (permissionGranted) "Start" else "Grant + Start")
                 }
             }
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Available audio inputs", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Diagnostic discovery only · listing an input does not mean it is recording.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Button(
+                onClick = { discoveredInputs = inputDiscovery.discover() },
+            ) {
+                Text("Refresh inputs")
+            }
+            when (val inputs = discoveredInputs) {
+                null -> Text("Press Refresh inputs to enumerate Android input devices.")
+                else -> {
+                    if (inputs.isEmpty()) {
+                        Text("Android reported no input devices.")
+                    }
+                    inputs.forEach { input ->
+                        Text(
+                            input.name + " · " + input.routeKind.name +
+                                " · type=" + input.type + " · id=" + input.id,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+            Text(
+                "Active capture route: " +
+                    if (isActive) {
+                        session?.inputRouteDisplay() ?: "Not reported yet"
+                    } else {
+                        "No active measurement"
+                    },
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
