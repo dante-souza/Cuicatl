@@ -62,3 +62,38 @@ For P3/TRRS on the J8:
 
 Phase 2D.0a can therefore proceed with **Auto-first input discovery and
 human-readable actual-route presentation**, without a manual selector.
+
+
+## Phase 2D.0a UI validation — 2026-10-11
+
+After the structured route-provenance implementation passed the local build gate,
+the build was installed on the J8 and validated with both the built-in and
+P3/TRRS microphone paths.
+
+Observed live Meter presentation:
+
+```text
+Input: Auto → Built-in microphone
+```
+
+with no external microphone attached, and:
+
+```text
+Input: Auto → Wired microphone · h2w
+```
+
+with the P3/TRRS microphone attached.
+
+In both cases the live session also reported:
+
+```text
+Source: VOICE_RECOGNITION
+Sample rate: 48000 Hz
+```
+
+Result: **PASS**.
+
+The Auto-first UX is therefore validated for the J8/P3 case. The input row is
+informational during capture and does not require a permanent manual selector.
+Manual preferred-device routing remains deferred until multiple simultaneously
+useful inputs are available for validation.
