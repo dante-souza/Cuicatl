@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputRouteKind
 import io.github.dante_souza.cuicatl.domain.MeterProjection
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
@@ -391,6 +392,9 @@ private fun MeterPage(
                     } else {
                         "—"
                     },
+            )
+            Text(
+                "Input: " + (session?.inputRouteDisplay() ?: "Auto → awaiting capture route"),
             )
             Text(
                 "Clipped samples, latest frame: " +
@@ -835,7 +839,12 @@ private fun SavedSessionDetailCard(
             )
             Text("Source: " + session.source)
             Text("Sample rate: " + session.sampleRateHz + " Hz")
-            Text("Input: " + session.inputIdentity)
+            Text("Input: " + session.inputRouteDisplay())
+            Text(
+                "Android route: " + session.inputIdentity.ifBlank { "not reported" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
             Text(
                 "AGC request: " +
                     (session.agcRequest?.displayLabel() ?: "Unknown (legacy session)"),
@@ -1226,6 +1235,29 @@ private fun LevelHistoryChart(frames: List<MeasurementFrame>, weighting: Frequen
             }
         }
     }
+}
+
+private fun MeasurementSession.inputRouteDisplay(): String {
+    val route =
+        when (inputRouteKind) {
+            InputRouteKind.BUILT_IN -> "Built-in microphone"
+            InputRouteKind.WIRED -> "Wired microphone"
+            InputRouteKind.USB -> "USB microphone"
+            InputRouteKind.BLUETOOTH -> "Bluetooth microphone"
+            InputRouteKind.OTHER -> inputDeviceName.ifBlank { "Other input" }
+            InputRouteKind.UNKNOWN ->
+                inputIdentity.ifBlank { "Unknown input" }
+        }
+    val device =
+        inputDeviceName
+            .takeIf {
+                it.isNotBlank() &&
+                    inputRouteKind != InputRouteKind.BUILT_IN &&
+                    !route.contains(it, ignoreCase = true)
+            }
+            ?.let { " · " + it }
+            .orEmpty()
+    return "Auto → " + route + device
 }
 
 private fun AgcRequest.displayLabel(): String = when (this) {
