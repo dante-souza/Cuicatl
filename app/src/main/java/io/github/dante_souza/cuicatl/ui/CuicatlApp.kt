@@ -393,9 +393,12 @@ private fun MeterPage(
                         "—"
                     },
             )
-            Text(
-                "Input: " + (session?.inputRouteDisplay() ?: "Auto → awaiting capture route"),
-            )
+            if (isActive) {
+                Text(
+                    "Input: " +
+                        (session?.inputRouteDisplay() ?: "Auto → opening capture route…"),
+                )
+            }
             Text(
                 "Clipped samples, latest frame: " +
                     (current?.clippedSampleCount ?: 0),
