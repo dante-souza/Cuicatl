@@ -217,7 +217,6 @@ fun CuicatlApp() {
                 AnalyzerPage.METER -> {
                     MeterPage(
                         snapshot = snapshot,
-                        activeCalibrationProfile = activeCalibrationProfile,
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
                         frequencyWeighting = frequencyWeighting,
@@ -340,7 +339,6 @@ fun CuicatlApp() {
 @Composable
 private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
-    activeCalibrationProfile: RootlessCalibrationProfile?,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
     frequencyWeighting: FrequencyWeighting,
