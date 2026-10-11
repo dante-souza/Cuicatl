@@ -3,6 +3,8 @@ package io.github.dante_souza.cuicatl.persistence
 
 import android.content.Context
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputRouteKind
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
 import io.github.dante_souza.cuicatl.domain.CalibrationSessionSnapshot
 import io.github.dante_souza.cuicatl.domain.RootlessCalibrationEvidenceState
 import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
@@ -63,6 +65,9 @@ class SessionRepository(context: Context) {
             setProperty(KEY_SOURCE, session.source)
             setProperty(KEY_SAMPLE_RATE_HZ, session.sampleRateHz.toString())
             setProperty(KEY_INPUT_IDENTITY, session.inputIdentity)
+            setProperty(KEY_INPUT_SELECTION_MODE, session.inputSelectionMode.name)
+            setProperty(KEY_INPUT_ROUTE_KIND, session.inputRouteKind.name)
+            setProperty(KEY_INPUT_DEVICE_NAME, session.inputDeviceName)
             session.agcRequest?.let { setProperty(KEY_AGC_REQUEST, it.name) }
             setProperty(KEY_PROCESSING_STATE, session.processingState)
             setProperty(KEY_FREQUENCY_WEIGHTING, session.frequencyWeighting.name)
@@ -239,6 +244,15 @@ class SessionRepository(context: Context) {
             source = metadata.getProperty(KEY_SOURCE).orEmpty(),
             sampleRateHz = metadata.getProperty(KEY_SAMPLE_RATE_HZ, "0").toInt(),
             inputIdentity = metadata.getProperty(KEY_INPUT_IDENTITY).orEmpty(),
+            inputSelectionMode =
+                metadata.getProperty(KEY_INPUT_SELECTION_MODE)
+                    ?.let { runCatching { InputSelectionMode.valueOf(it) }.getOrNull() }
+                    ?: InputSelectionMode.AUTO,
+            inputRouteKind =
+                metadata.getProperty(KEY_INPUT_ROUTE_KIND)
+                    ?.let { runCatching { InputRouteKind.valueOf(it) }.getOrNull() }
+                    ?: InputRouteKind.UNKNOWN,
+            inputDeviceName = metadata.getProperty(KEY_INPUT_DEVICE_NAME).orEmpty(),
             agcRequest = metadata.getProperty(KEY_AGC_REQUEST)
                 ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() },
             processingState = metadata.getProperty(KEY_PROCESSING_STATE).orEmpty(),
@@ -393,6 +407,9 @@ class SessionRepository(context: Context) {
         const val KEY_SOURCE = "source"
         const val KEY_SAMPLE_RATE_HZ = "sample_rate_hz"
         const val KEY_INPUT_IDENTITY = "input_identity"
+        const val KEY_INPUT_SELECTION_MODE = "input_selection_mode"
+        const val KEY_INPUT_ROUTE_KIND = "input_route_kind"
+        const val KEY_INPUT_DEVICE_NAME = "input_device_name"
         const val KEY_AGC_REQUEST = "agc_request"
         const val KEY_PROCESSING_STATE = "processing_state"
         const val KEY_FREQUENCY_WEIGHTING = "frequency_weighting"
