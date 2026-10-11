@@ -462,38 +462,27 @@ private fun MeterPage(
             }
 
             val calibrationSnapshot = session?.calibrationSnapshot
-            val measurementBasis =
-                when (calibrationSnapshot?.evidenceState) {
-                    RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE ->
-                        "Reference-adjusted profile matched · absolute SPL display remains disabled."
-                    RootlessCalibrationEvidenceState.PROFILE_MISMATCH ->
-                        "Device measurement · calibration profile mismatch."
-                    RootlessCalibrationEvidenceState.UNCALIBRATED,
-                    null -> "Device measurement · absolute SPL not calibrated."
+            when (calibrationSnapshot?.evidenceState) {
+                RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE -> {
+                    Text(
+                        "Reference-adjusted profile matched · absolute SPL display remains disabled.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
-            Text(
-                measurementBasis,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color =
-                    if (
-                        calibrationSnapshot?.evidenceState ==
-                        RootlessCalibrationEvidenceState.PROFILE_MISMATCH
-                    ) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.outline
-                    },
-            )
-            if (
-                calibrationSnapshot == null &&
-                activeCalibrationProfile != null
-            ) {
-                Text(
-                    "A calibration profile exists, but this digital display does not claim absolute SPL.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
+
+                RootlessCalibrationEvidenceState.PROFILE_MISMATCH -> {
+                    Text(
+                        "Calibration profile mismatch · absolute SPL unavailable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                RootlessCalibrationEvidenceState.UNCALIBRATED,
+                null -> Unit
             }
         }
     }
@@ -521,113 +510,133 @@ private fun MeterPage(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
-                value = sessionLabel,
-                onValueChange = onLabelChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Session label") },
-                enabled = !isActive,
-                singleLine = true,
-            )
-
-            Text("Frequency weighting", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FrequencyWeighting.entries.forEach { choice ->
-                    if (effectiveWeighting == choice) {
-                        Button(onClick = { onFrequencyWeightingChange(choice) }, enabled = !isActive) { Text(choice.name) }
-                    } else {
-                        TextButton(onClick = { onFrequencyWeightingChange(choice) }, enabled = !isActive) { Text(choice.name) }
-                    }
-                }
-            }
-            Text(
-                "A applies frequency weighting; Z is nominally flat digital analysis. Fixed from Start through Stop.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            Text(
-                "Android AGC",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AgcRequest.entries.forEach { request ->
-                    val supported =
-                        request == AgcRequest.DEFAULT || agcAvailable
-                    if (effectiveAgcRequest == request) {
-                        Button(
-                            onClick = { onAgcRequestChange(request) },
-                            enabled = !isActive && supported,
-                        ) {
-                            Text(request.displayLabel())
-                        }
-                    } else {
-                        TextButton(
-                            onClick = { onAgcRequestChange(request) },
-                            enabled = !isActive && supported,
-                        ) {
-                            Text(request.displayLabel())
-                        }
-                    }
-                }
-            }
-            Text(
-                when {
-                    !agcAvailable ->
-                        "Standard Android AGC is unavailable on this device; Off/On cannot be applied."
-                    isActive ->
-                        "AGC request is frozen for this active session: " +
-                            effectiveAgcRequest.displayLabel()
-                    else ->
-                        "Choose before Start. Default observes without changing AGC; Off/On request a fixed Android effect state."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            if (isActive && !session?.processingState.isNullOrBlank()) {
+            if (isActive) {
                 Text(
-                    "Applied processing: " + session?.processingState.orEmpty(),
+                    "Active session",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    session?.label?.ifBlank { "Unlabeled session" } ?: "Opening session…",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    effectiveWeighting.name +
+                        " weighting · AGC " +
+                        effectiveAgcRequest.displayLabel(),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Measurement configuration is fixed until this session ends.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
-            }
+                Button(
+                    onClick = onStop,
+                    enabled = snapshot.status != SessionRuntimeSnapshot.Status.FINALIZING,
+                ) {
+                    Text(
+                        if (snapshot.status == SessionRuntimeSnapshot.Status.FINALIZING) {
+                            "Finalizing…"
+                        } else {
+                            "Stop"
+                        },
+                    )
+                }
+            } else {
+                OutlinedTextField(
+                    value = sessionLabel,
+                    onValueChange = onLabelChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Session label") },
+                    singleLine = true,
+                )
 
-            val readinessText =
-                if (permissionDenied) {
-                    "Microphone permission denied. No capture was started."
-                } else {
-                    when (readiness) {
-                        CaptureReadiness.Ready ->
-                            "Ready. Recording starts only when you press Start."
-
-                        is CaptureReadiness.NotReady ->
-                            readiness.detail ?: "Microphone capture is not ready."
+                Text("Frequency weighting", style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FrequencyWeighting.entries.forEach { choice ->
+                        if (effectiveWeighting == choice) {
+                            Button(onClick = { onFrequencyWeightingChange(choice) }) {
+                                Text(choice.name)
+                            }
+                        } else {
+                            TextButton(onClick = { onFrequencyWeightingChange(choice) }) {
+                                Text(choice.name)
+                            }
+                        }
                     }
                 }
-            Text(
-                readinessText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-
-            Button(
-                onClick = if (isActive) onStop else onStart,
-                enabled =
-                    isActive ||
-                        readiness !is CaptureReadiness.NotReady ||
-                        readiness.reason != CaptureReadiness.Reason.MICROPHONE_UNAVAILABLE,
-            ) {
                 Text(
-                    when (snapshot.status) {
-                        SessionRuntimeSnapshot.Status.STARTING -> "Stop"
-                        SessionRuntimeSnapshot.Status.RUNNING -> "Stop"
-                        SessionRuntimeSnapshot.Status.FINALIZING -> "Finalizing…"
-                        else -> if (permissionGranted) "Start" else "Grant + Start"
-                    },
+                    "A applies frequency weighting; Z is nominally flat digital analysis. Fixed from Start through Stop.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
                 )
+
+                Text(
+                    "Android AGC",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AgcRequest.entries.forEach { request ->
+                        val supported =
+                            request == AgcRequest.DEFAULT || agcAvailable
+                        if (effectiveAgcRequest == request) {
+                            Button(
+                                onClick = { onAgcRequestChange(request) },
+                                enabled = supported,
+                            ) {
+                                Text(request.displayLabel())
+                            }
+                        } else {
+                            TextButton(
+                                onClick = { onAgcRequestChange(request) },
+                                enabled = supported,
+                            ) {
+                                Text(request.displayLabel())
+                            }
+                        }
+                    }
+                }
+                Text(
+                    if (!agcAvailable) {
+                        "Standard Android AGC is unavailable on this device; Off/On cannot be applied."
+                    } else {
+                        "Default observes without changing AGC; Off/On request a fixed Android effect state."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+
+                val readinessText =
+                    if (permissionDenied) {
+                        "Microphone permission denied. No capture was started."
+                    } else {
+                        when (readiness) {
+                            CaptureReadiness.Ready ->
+                                "Ready. Recording starts only when you press Start."
+
+                            is CaptureReadiness.NotReady ->
+                                readiness.detail ?: "Microphone capture is not ready."
+                        }
+                    }
+                Text(
+                    readinessText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+
+                Button(
+                    onClick = onStart,
+                    enabled =
+                        readiness !is CaptureReadiness.NotReady ||
+                            readiness.reason != CaptureReadiness.Reason.MICROPHONE_UNAVAILABLE,
+                ) {
+                    Text(if (permissionGranted) "Start" else "Grant + Start")
+                }
             }
         }
     }
