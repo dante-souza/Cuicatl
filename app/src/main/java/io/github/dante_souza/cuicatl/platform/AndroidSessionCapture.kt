@@ -3,6 +3,9 @@ package io.github.dante_souza.cuicatl.platform
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -86,6 +89,8 @@ class AndroidSessionCapture(
         var preprocessorAudit: CapturePreprocessorAudit? = null
         val audioManager = appContext.getSystemService(AudioManager::class.java)
         var scoStarted = false
+        var scoReceiver: BroadcastReceiver? = null
+        val scoConnected = AtomicBoolean(false)
         var sequence = 0L
         var intervalStartSample = 0L
         var intervalSampleCount = 0
@@ -105,8 +110,33 @@ class AndroidSessionCapture(
                     .firstOrNull { it.id == requestedInputDeviceId &&
                         it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
                     ?: error("Requested Bluetooth SCO microphone unavailable")
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: Intent) {
+                        if (intent.action == AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED) {
+                            scoConnected.set(
+                                intent.getIntExtra(
+                                    AudioManager.EXTRA_SCO_AUDIO_STATE,
+                                    AudioManager.SCO_AUDIO_STATE_ERROR,
+                                ) == AudioManager.SCO_AUDIO_STATE_CONNECTED,
+                            )
+                        }
+                    }
+                }
+                scoReceiver = receiver
+                appContext.registerReceiver(
+                    receiver,
+                    IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED),
+                )
                 audioManager.startBluetoothSco()
                 scoStarted = true
+                val scoDeadline = SystemClock.elapsedRealtime() + 8_000L
+                while (running.get() && !scoConnected.get() &&
+                    SystemClock.elapsedRealtime() < scoDeadline) {
+                    Thread.sleep(100)
+                }
+                check(running.get() && scoConnected.get()) {
+                    "Bluetooth SCO audio did not connect within 8 seconds"
+                }
                 if (!active.setPreferredDevice(target)) {
                     error("Bluetooth SCO microphone preference rejected")
                 }
@@ -270,6 +300,7 @@ class AndroidSessionCapture(
             }
             runCatching { preprocessorAudit?.close() }
             runCatching { record?.release() }
+            scoReceiver?.let { runCatching { appContext.unregisterReceiver(it) } }
             if (scoStarted) runCatching { audioManager.stopBluetoothSco() }
         }
     }
