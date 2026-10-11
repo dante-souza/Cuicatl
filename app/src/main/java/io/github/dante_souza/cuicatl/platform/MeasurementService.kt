@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.SystemClock
 import io.github.dante_souza.cuicatl.MainActivity
 import io.github.dante_souza.cuicatl.R
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.LevelStatisticsAccumulator
 import io.github.dante_souza.cuicatl.domain.AgcRequest
@@ -107,7 +108,11 @@ class MeasurementService : Service() {
                 val weighting = intent.getStringExtra(EXTRA_FREQUENCY_WEIGHTING)
                     ?.let { runCatching { FrequencyWeighting.valueOf(it) }.getOrNull() }
                     ?: FrequencyWeighting.Z
-                startMeasurement(label, agcRequest, weighting)
+                val selectionMode = intent.getStringExtra(EXTRA_INPUT_SELECTION_MODE)
+                    ?.let { runCatching { InputSelectionMode.valueOf(it) }.getOrNull() }
+                    ?: InputSelectionMode.AUTO
+                val inputDeviceId = intent.getIntExtra(EXTRA_INPUT_DEVICE_ID, -1)
+                startMeasurement(label, agcRequest, weighting, selectionMode, inputDeviceId)
             }
 
             ACTION_STOP -> stopMeasurement()
@@ -381,6 +386,8 @@ class MeasurementService : Service() {
         label: String,
         agcRequest: AgcRequest,
         frequencyWeighting: FrequencyWeighting,
+        inputSelectionMode: InputSelectionMode,
+        inputDeviceId: Int,
     ) {
         if (!SessionCommandPolicy.acceptsStart(runtimeSnapshot.status)) {
             return
@@ -400,6 +407,7 @@ class MeasurementService : Service() {
             timezoneOffset = timezoneOffset,
             agcRequest = agcRequest,
             frequencyWeighting = frequencyWeighting,
+            inputSelectionMode = inputSelectionMode,
         )
         activeSession = startingSession
         activeStartedElapsedRealtime = SystemClock.elapsedRealtime()
@@ -424,6 +432,8 @@ class MeasurementService : Service() {
             sessionId = sessionId,
             agcRequest = agcRequest,
             frequencyWeighting = frequencyWeighting,
+            inputSelectionMode = inputSelectionMode,
+            requestedInputDeviceId = inputDeviceId,
             onStarted = { configuration ->
                 val inputConfiguration = MeasurementInputConfiguration(
                     deviceModel = Build.MODEL,
@@ -648,6 +658,8 @@ class MeasurementService : Service() {
         const val EXTRA_LABEL = "session_label"
         const val EXTRA_AGC_REQUEST = "agc_request"
         const val EXTRA_FREQUENCY_WEIGHTING = "frequency_weighting"
+        const val EXTRA_INPUT_SELECTION_MODE = "input_selection_mode"
+        const val EXTRA_INPUT_DEVICE_ID = "input_device_id"
 
         private const val CHANNEL_ID = "cuicatl_measurement"
         private const val NOTIFICATION_ID = 1001
