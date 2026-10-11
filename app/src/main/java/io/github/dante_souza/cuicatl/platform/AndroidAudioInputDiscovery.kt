@@ -4,6 +4,7 @@ package io.github.dante_souza.cuicatl.platform
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 import io.github.dante_souza.cuicatl.domain.InputRouteKind
 
 data class DiscoveredAudioInput(
@@ -29,7 +30,11 @@ class AndroidAudioInputDiscovery(context: Context) {
                     type = device.type,
                     name = device.productName.toString(),
                     routeKind = classify(device.type),
-                    address = device.address.orEmpty(),
+                    address = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        device.address.orEmpty()
+                    } else {
+                        ""
+                    },
                 )
             }
             ?.sortedWith(compareBy({ it.routeKind.name }, { it.name }, { it.id }))
