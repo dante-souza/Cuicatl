@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
 import io.github.dante_souza.cuicatl.domain.InputRouteKind
 import io.github.dante_souza.cuicatl.domain.MeterProjection
 import io.github.dante_souza.cuicatl.domain.AgcRequest
@@ -100,6 +101,8 @@ fun CuicatlApp() {
     var sessionLabel by rememberSaveable { mutableStateOf("") }
     var agcRequest by rememberSaveable { mutableStateOf(AgcRequest.DEFAULT) }
     var frequencyWeighting by rememberSaveable { mutableStateOf(FrequencyWeighting.Z) }
+    var inputSelectionMode by rememberSaveable { mutableStateOf(InputSelectionMode.AUTO) }
+    var selectedBluetoothInputId by rememberSaveable { mutableStateOf(-1) }
     var snapshot by remember { mutableStateOf(SessionRuntimeSnapshot()) }
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
     var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -157,6 +160,8 @@ fun CuicatlApp() {
             putExtra(MeasurementService.EXTRA_LABEL, sessionLabel)
             putExtra(MeasurementService.EXTRA_AGC_REQUEST, agcRequest.name)
             putExtra(MeasurementService.EXTRA_FREQUENCY_WEIGHTING, frequencyWeighting.name)
+            putExtra(MeasurementService.EXTRA_INPUT_SELECTION_MODE, inputSelectionMode.name)
+            putExtra(MeasurementService.EXTRA_INPUT_DEVICE_ID, selectedBluetoothInputId)
         }
         ContextCompat.startForegroundService(context, intent)
     }
@@ -219,6 +224,10 @@ fun CuicatlApp() {
                 AnalyzerPage.METER -> {
                     MeterPage(
                         snapshot = snapshot,
+                        inputSelectionMode = inputSelectionMode,
+                        onInputSelectionModeChange = { inputSelectionMode = it },
+                        selectedBluetoothInputId = selectedBluetoothInputId,
+                        onBluetoothInputIdChange = { selectedBluetoothInputId = it },
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
                         frequencyWeighting = frequencyWeighting,
@@ -341,6 +350,10 @@ fun CuicatlApp() {
 @Composable
 private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
+    inputSelectionMode: InputSelectionMode,
+    onInputSelectionModeChange: (InputSelectionMode) -> Unit,
+    selectedBluetoothInputId: Int,
+    onBluetoothInputIdChange: (Int) -> Unit,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
     frequencyWeighting: FrequencyWeighting,
@@ -635,8 +648,12 @@ private fun MeterPage(
                 Button(
                     onClick = onStart,
                     enabled =
-                        readiness !is CaptureReadiness.NotReady ||
-                            readiness.reason != CaptureReadiness.Reason.MICROPHONE_UNAVAILABLE,
+                        (readiness !is CaptureReadiness.NotReady ||
+                            readiness.reason != CaptureReadiness.Reason.MICROPHONE_UNAVAILABLE) &&
+                        (inputSelectionMode == InputSelectionMode.AUTO ||
+                            (selectedBluetoothInputId >= 0 &&
+                                discoveredInputs.orEmpty().any { it.id == selectedBluetoothInputId &&
+                                    it.routeKind == InputRouteKind.BLUETOOTH })),
                 ) {
                     Text(if (permissionGranted) "Start" else "Grant + Start")
                 }
@@ -649,16 +666,40 @@ private fun MeterPage(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Recording input", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Automatic — Android default (selected)",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            TextButton(
+                onClick = { onInputSelectionModeChange(InputSelectionMode.AUTO) },
+                enabled = !isActive,
+            ) {
+                Text(if (inputSelectionMode == InputSelectionMode.AUTO) {
+                    "Automatic — Android default (selected)"
+                } else {
+                    "Automatic — Android default"
+                })
+            }
             Text(
                 "Cuicatl does not request a specific microphone in this mode. The actual input is reported during recording.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
+            val bluetoothInputs = discoveredInputs.orEmpty()
+                .filter { it.routeKind == InputRouteKind.BLUETOOTH }
+            bluetoothInputs.forEach { input ->
+                TextButton(
+                    onClick = {
+                        onBluetoothInputIdChange(input.id)
+                        onInputSelectionModeChange(InputSelectionMode.BLUETOOTH_SCO)
+                    },
+                    enabled = !isActive,
+                ) {
+                    Text(input.name + if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO &&
+                        selectedBluetoothInputId == input.id) " (selected)" else " — Bluetooth SCO")
+                }
+            }
+            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO &&
+                bluetoothInputs.none { it.id == selectedBluetoothInputId }) {
+                Text("Selected Bluetooth input unavailable. Refresh or choose Automatic.",
+                    color = MaterialTheme.colorScheme.error)
+            }
             Text("Available audio inputs", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Diagnostic discovery only · listing an input does not mean it is recording.",
