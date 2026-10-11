@@ -384,7 +384,8 @@ private fun MeterPage(
                 color = MaterialTheme.colorScheme.outline,
             )
 
-            snapshot.levelStatistics?.let { statistics ->
+            val statistics = snapshot.levelStatistics
+            if (statistics != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -399,7 +400,9 @@ private fun MeterPage(
                     MeterStatistic("Leq", formatDb(statistics.leqDbfs))
                     MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
                 }
-            } ?: MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
+            } else {
+                MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
+            }
 
             Text(
                 "Time: " +
