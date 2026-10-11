@@ -3,6 +3,7 @@ package io.github.dante_souza.cuicatl.domain
 
 enum class InputSelectionMode {
     AUTO,
+    BLUETOOTH_SCO,
 }
 
 enum class InputRouteKind {
