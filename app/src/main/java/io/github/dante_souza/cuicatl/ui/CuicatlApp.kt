@@ -1423,7 +1423,11 @@ private fun MeasurementSession.inputRouteDisplay(): String {
             }
             ?.let { " · " + it }
             .orEmpty()
-    return "Auto → " + route + device
+    val requestLabel = when (inputSelectionMode) {
+        InputSelectionMode.AUTO -> "Auto"
+        InputSelectionMode.BLUETOOTH_SCO -> "Bluetooth requested"
+    }
+    return requestLabel + " → " + route + device
 }
 
 private fun AgcRequest.displayLabel(): String = when (this) {
