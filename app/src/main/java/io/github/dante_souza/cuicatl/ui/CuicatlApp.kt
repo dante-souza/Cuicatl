@@ -648,6 +648,17 @@ private fun MeterPage(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Text("Recording input", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Automatic — Android default (selected)",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Cuicatl does not request a specific microphone in this mode. The actual input is reported during recording.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
             Text("Available audio inputs", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Diagnostic discovery only · listing an input does not mean it is recording.",
