@@ -317,8 +317,7 @@ class AndroidSessionCapture(
             AudioDeviceInfo.TYPE_WIRED_HEADSET -> InputRouteKind.WIRED
             AudioDeviceInfo.TYPE_USB_DEVICE,
             AudioDeviceInfo.TYPE_USB_ACCESSORY,
-            AudioDeviceInfo.TYPE_USB_HEADSET,
-            -> InputRouteKind.USB
+            AudioDeviceInfo.TYPE_USB_HEADSET -> InputRouteKind.USB
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> InputRouteKind.BLUETOOTH
             null -> InputRouteKind.UNKNOWN
             else -> InputRouteKind.OTHER
