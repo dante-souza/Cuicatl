@@ -14,6 +14,7 @@ import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.SystemClock
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputRouteKind
 import io.github.dante_souza.cuicatl.domain.StreamingFrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
@@ -30,6 +31,8 @@ data class CaptureConfiguration(
     val source: String,
     val sampleRateHz: Int,
     val inputIdentity: String,
+    val inputRouteKind: InputRouteKind,
+    val inputDeviceName: String,
     val processingState: String,
 )
 
@@ -120,6 +123,8 @@ class AndroidSessionCapture(
                 source = sourceName(active.audioSource),
                 sampleRateHz = rate,
                 inputIdentity = expectedRouteIdentity,
+                inputRouteKind = routeKind(active.routedDevice),
+                inputDeviceName = active.routedDevice?.productName?.toString().orEmpty(),
                 processingState = preprocessorAudit.description,
             )
             onStarted(configuration)
@@ -305,6 +310,19 @@ class AndroidSessionCapture(
         if (device == null) return "No routed device reported"
         return "type=" + device.type + " · " + device.productName
     }
+
+    private fun routeKind(device: AudioDeviceInfo?): InputRouteKind =
+        when (device?.type) {
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> InputRouteKind.BUILT_IN
+            AudioDeviceInfo.TYPE_WIRED_HEADSET -> InputRouteKind.WIRED
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            -> InputRouteKind.USB
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> InputRouteKind.BLUETOOTH
+            null -> InputRouteKind.UNKNOWN
+            else -> InputRouteKind.OTHER
+        }
 
     private class CapturePreprocessorAudit private constructor(
         private val agc: AutomaticGainControl?,
