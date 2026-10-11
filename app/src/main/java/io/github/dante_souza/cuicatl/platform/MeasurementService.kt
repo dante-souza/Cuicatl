@@ -442,6 +442,8 @@ class MeasurementService : Service() {
                     source = configuration.source,
                     sampleRateHz = configuration.sampleRateHz,
                     inputIdentity = configuration.inputIdentity,
+                    inputRouteKind = configuration.inputRouteKind,
+                    inputDeviceName = configuration.inputDeviceName,
                     processingState = configuration.processingState,
                     calibrationSnapshot = calibrationSnapshot,
                 )
