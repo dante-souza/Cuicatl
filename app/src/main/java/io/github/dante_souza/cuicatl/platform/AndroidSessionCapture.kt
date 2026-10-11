@@ -84,6 +84,8 @@ class AndroidSessionCapture(
     private fun runCapture() {
         var record: AudioRecord? = null
         var preprocessorAudit: CapturePreprocessorAudit? = null
+        val audioManager = appContext.getSystemService(AudioManager::class.java)
+        var scoStarted = false
         var sequence = 0L
         var intervalStartSample = 0L
         var intervalSampleCount = 0
@@ -98,6 +100,17 @@ class AndroidSessionCapture(
 
             val active = selection.record
             record = active
+            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                val target = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    .firstOrNull { it.id == requestedInputDeviceId &&
+                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                    ?: error("Requested Bluetooth SCO microphone unavailable")
+                audioManager.startBluetoothSco()
+                scoStarted = true
+                if (!active.setPreferredDevice(target)) {
+                    error("Bluetooth SCO microphone preference rejected")
+                }
+            }
             activeRecord = active
 
             // Inspect the actual AudioRecord session rather than inferring
@@ -115,6 +128,17 @@ class AndroidSessionCapture(
                 error("AudioRecord did not enter RECORDSTATE_RECORDING")
             }
 
+            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                val deadline = SystemClock.elapsedRealtime() + 5_000L
+                while (running.get() && SystemClock.elapsedRealtime() < deadline &&
+                    active.routedDevice?.id != requestedInputDeviceId) {
+                    Thread.sleep(100)
+                }
+                check(active.routedDevice?.id == requestedInputDeviceId &&
+                    active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+                    "Bluetooth SCO route not confirmed; capture refused"
+                }
+            }
             startedAtElapsedRealtime = SystemClock.elapsedRealtime()
             val rate = active.sampleRate
             val filter = StreamingFrequencyWeighting(frequencyWeighting, rate)
@@ -246,6 +270,7 @@ class AndroidSessionCapture(
             }
             runCatching { preprocessorAudit?.close() }
             runCatching { record?.release() }
+            if (scoStarted) runCatching { audioManager.stopBluetoothSco() }
         }
     }
 
