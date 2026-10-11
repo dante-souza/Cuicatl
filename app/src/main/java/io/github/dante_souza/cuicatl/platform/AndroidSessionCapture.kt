@@ -15,6 +15,7 @@ import android.media.audiofx.NoiseSuppressor
 import android.os.SystemClock
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.InputRouteKind
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
 import io.github.dante_souza.cuicatl.domain.StreamingFrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
@@ -41,6 +42,8 @@ class AndroidSessionCapture(
     private val sessionId: String,
     private val agcRequest: AgcRequest,
     private val frequencyWeighting: FrequencyWeighting,
+    private val inputSelectionMode: InputSelectionMode = InputSelectionMode.AUTO,
+    private val requestedInputDeviceId: Int = -1,
     private val onStarted: (CaptureConfiguration) -> Unit,
     private val onFrame: (MeasurementFrame) -> Unit,
     private val onStopped: (elapsedMillis: Long) -> Unit,
