@@ -208,7 +208,7 @@ fun CuicatlApp() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Phase 2 · digital A/Z meter · rootless calibration gated",
+                text = "Device measurement · absolute SPL not calibrated",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -367,49 +367,75 @@ private fun MeterPage(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Digital level · " + effectiveWeighting.name + " weighting", style = MaterialTheme.typography.titleLarge)
+            Text(
+                effectiveWeighting.name + "-weighted digital level",
+                style = MaterialTheme.typography.titleLarge,
+            )
             Text(
                 text = formatDb(current?.weightedRmsDbfs ?: current?.rmsDbfs),
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text("Weighted RMS · dBFS")
-            snapshot.levelStatistics?.let { statistics ->
-                Text("Minimum: " + formatDb(statistics.minimumDbfs))
-                Text("Maximum: " + formatDb(statistics.maximumDbfs))
-                Text("Leq: " + formatDb(statistics.leqDbfs))
-            }
-            Text("Sample peak: " + formatDb(current?.samplePeakDbfs))
-            Text("Elapsed: " + formatDuration(session?.elapsedMillis ?: 0L))
-            Text("Captured: " + formatDuration(session?.capturedMillis ?: 0L))
-            Text("Source: " + (session?.source?.ifBlank { "—" } ?: "—"))
             Text(
-                "Sample rate: " +
-                    if ((session?.sampleRateHz ?: 0) > 0) {
-                        session?.sampleRateHz.toString() + " Hz"
-                    } else {
-                        "—"
-                    },
+                "Current · weighted RMS",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
+            snapshot.levelStatistics?.let { statistics ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    MeterStatistic("Minimum", formatDb(statistics.minimumDbfs))
+                    MeterStatistic("Maximum", formatDb(statistics.maximumDbfs))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    MeterStatistic("Leq", formatDb(statistics.leqDbfs))
+                    MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
+                }
+            } ?: MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
+
+            Text(
+                "Time: " +
+                    formatDuration(session?.elapsedMillis ?: 0L) +
+                    " · " +
+                    formatDuration(session?.capturedMillis ?: 0L) +
+                    " captured",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            val source = session?.source?.ifBlank { "—" } ?: "—"
+            val sampleRate =
+                if ((session?.sampleRateHz ?: 0) > 0) {
+                    formatSampleRate(session?.sampleRateHz ?: 0)
+                } else {
+                    "—"
+                }
+            Text(
+                "Capture: " + source + " · " + sampleRate,
+                style = MaterialTheme.typography.bodyMedium,
             )
             if (isActive) {
                 Text(
                     "Input: " +
                         (session?.inputRouteDisplay() ?: "Auto → opening capture route…"),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Text(
-                "Clipped samples, latest frame: " +
-                    (current?.clippedSampleCount ?: 0),
-            )
+
             Text(
                 if (snapshot.clippedFrameCount > 0) {
-                    "Clipping observed in this session: " +
+                    "Clipping: " +
                         snapshot.clippedFrameCount + " frames · " +
                         snapshot.clippedSampleCount + " samples"
                 } else {
-                    "Session clipping: none observed"
+                    "Clipping: none observed"
                 },
                 color =
                     if (snapshot.clippedFrameCount > 0) {
@@ -418,52 +444,53 @@ private fun MeterPage(
                         MaterialTheme.colorScheme.outline
                     },
             )
+
+            val routineRunningMessage =
+                "Measurement running. Values are digital dBFS, not SPL."
+            if (
+                snapshot.message.isNotBlank() &&
+                snapshot.message != routineRunningMessage
+            ) {
+                Text(
+                    snapshot.message,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+
+            val calibrationSnapshot = session?.calibrationSnapshot
+            val measurementBasis =
+                when (calibrationSnapshot?.evidenceState) {
+                    RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE ->
+                        "Reference-adjusted profile matched · absolute SPL display remains disabled."
+                    RootlessCalibrationEvidenceState.PROFILE_MISMATCH ->
+                        "Device measurement · calibration profile mismatch."
+                    RootlessCalibrationEvidenceState.UNCALIBRATED,
+                    null,
+                    -> "Device measurement · absolute SPL not calibrated."
+                }
             Text(
-                snapshot.message,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            Text(
-                "Digital A/Z weighting only. Values are not calibrated SPL.",
+                measurementBasis,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
+                color =
+                    if (
+                        calibrationSnapshot?.evidenceState ==
+                        RootlessCalibrationEvidenceState.PROFILE_MISMATCH
+                    ) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
             )
-            val calibrationSnapshot = session?.calibrationSnapshot
-            when {
-                calibrationSnapshot != null -> {
-                    Text(
-                        when (calibrationSnapshot.evidenceState) {
-                            RootlessCalibrationEvidenceState.UNCALIBRATED ->
-                                "Session calibration snapshot: uncalibrated · profile " +
-                                    calibrationSnapshot.profileId + " v" +
-                                    calibrationSnapshot.profileVersion + "."
-                            RootlessCalibrationEvidenceState.PROFILE_MISMATCH ->
-                                "Session calibration snapshot: profile mismatch · SPL unavailable."
-                            RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE ->
-                                "Validated rootless profile matched at Start · " +
-                                    "SPL display remains disabled pending Phase 2 activation."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color =
-                            if (
-                                calibrationSnapshot.evidenceState ==
-                                RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE
-                            ) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outline
-                            },
-                    )
-                }
-                activeCalibrationProfile != null -> {
-                    Text(
-                        "Active calibration profile: " +
-                            activeCalibrationProfile.status.name.lowercase() +
-                            " · compatibility is frozen when capture starts. " +
-                            "SPL display remains disabled.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
+            if (
+                calibrationSnapshot == null &&
+                activeCalibrationProfile != null
+            ) {
+                Text(
+                    "A calibration profile exists, but this digital display does not claim absolute SPL.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
             }
         }
     }
@@ -510,7 +537,11 @@ private fun MeterPage(
                     }
                 }
             }
-            Text("Weighting is fixed from Start through Stop.", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "A applies frequency weighting; Z is nominally flat digital analysis. Fixed from Start through Stop.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
             Text(
                 "Android AGC",
                 style = MaterialTheme.typography.titleMedium,
@@ -1192,6 +1223,29 @@ private fun SavedSessionDetailCard(
         }
     }
 }
+
+@Composable
+private fun MeterStatistic(label: String, value: String) {
+    Column {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+private fun formatSampleRate(sampleRateHz: Int): String =
+    if (sampleRateHz > 0 && sampleRateHz % 1000 == 0) {
+        (sampleRateHz / 1000).toString() + " kHz"
+    } else {
+        sampleRateHz.toString() + " Hz"
+    }
 
 @Composable
 private fun LevelHistoryChart(frames: List<MeasurementFrame>, weighting: FrequencyWeighting) {
