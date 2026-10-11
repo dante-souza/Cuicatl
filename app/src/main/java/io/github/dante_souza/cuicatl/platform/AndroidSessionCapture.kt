@@ -98,6 +98,8 @@ class AndroidSessionCapture(
         var weightedSumSquares = 0.0
         var intervalPeak = 0.0
         var intervalClipped = 0
+        var nonzeroSamplesObserved = false
+        var capturedSamples = 0L
 
         try {
             val selection = openFirstSupportedRecord()
@@ -257,6 +259,19 @@ class AndroidSessionCapture(
                     error("AudioRecord.read failed with code " + read)
                 }
                 if (read == 0) continue
+
+                if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                    capturedSamples += read
+                    if (!nonzeroSamplesObserved) {
+                        nonzeroSamplesObserved = (0 until read).any { buffer[it] != 0.toShort() }
+                    }
+                    if (!nonzeroSamplesObserved && capturedSamples >= active.sampleRate * 5L) {
+                        error(
+                            "Bluetooth capture produced only digital-zero samples for 5 seconds; " +
+                                "audio signal not verified (transport failure or muted/silent source)"
+                        )
+                    }
+                }
 
                 // A Phase 1 session has one fixed input configuration.
                 // Reject a detected route change before consuming the newly read block.
