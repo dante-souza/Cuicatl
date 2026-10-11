@@ -411,9 +411,10 @@ private fun MeterPage(
             )
 
             val source = session?.source?.ifBlank { "—" } ?: "—"
+            val sampleRateHz = session?.sampleRateHz ?: 0
             val sampleRate =
-                if ((session?.sampleRateHz ?: 0) > 0) {
-                    formatSampleRate(session?.sampleRateHz ?: 0)
+                if (sampleRateHz > 0) {
+                    formatSampleRate(sampleRateHz)
                 } else {
                     "—"
                 }
@@ -465,8 +466,7 @@ private fun MeterPage(
                     RootlessCalibrationEvidenceState.PROFILE_MISMATCH ->
                         "Device measurement · calibration profile mismatch."
                     RootlessCalibrationEvidenceState.UNCALIBRATED,
-                    null,
-                    -> "Device measurement · absolute SPL not calibrated."
+                    null -> "Device measurement · absolute SPL not calibrated."
                 }
             Text(
                 measurementBasis,
