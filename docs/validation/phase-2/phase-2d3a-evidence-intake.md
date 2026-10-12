@@ -256,3 +256,57 @@ historical capture.
 
 Archive SHA-256 status (56/56) and the Phase 2D.3a Bluetooth-off
 INTERRUPTED outcome are unaffected.
+
+## Historical CSV located in Downloads — 2026-10-12
+
+The owner supplied a **Windows directory listing** for the separate local
+`cuicatl_evidence` folder under Downloads. This is **metadata evidence only**:
+the CSV file bytes were **not** uploaded or hashed in this checkpoint.
+
+The listing identifies both previously referenced Phase 2D.2 CSV files:
+
+| Local file | Listing size | Listed last-modified time |
+| --- | ---: | --- |
+| `bt_handshk1-923cbd17-5a88-410d-bd54-38fb1fc5127b.csv` | 121,030 bytes | 2026-10-11 18:50 |
+| `bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv` | 853,855 bytes | 2026-10-12 12:01 |
+
+The folder listing contains **58 files in total**, including other measurement
+CSVs, JPG screenshots, MP4 videos and a 0-byte directory-listing text file.
+It is a *separate* corpus from the immutable 56-payload
+`Cuicatl-lab-evidence-20261012-132137` archive.
+
+**Custody correction:** `bt_test` is **not missing from the user's local
+filesystem**; it is listed under Downloads. We still have no confirmed
+SHA-256 for this particular copy, no byte-for-byte comparison with the email
+attachment or previously discussed export, and no content/metadata review.
+Using Cuicatl's *Sanitize saved sessions* function deletes local app sessions
+and cached exports; it does not itself rewrite a copy already downloaded or
+sent by email. We must not call this file a redacted derivative merely
+because the Android app was sanitized.
+
+### Read-only hash / basic CSV verification on the owner's Windows host
+
+```powershell
+$evidenceDir = Join-Path $HOME 'Downloads\cuicatl_evidence'
+$names = @(
+    'bt_handshk1-923cbd17-5a88-410d-bd54-38fb1fc5127b.csv',
+    'bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv'
+)
+foreach ($name in $names) {
+    $file = Join-Path $evidenceDir $name
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing: $file" }
+    $info = Get-Item -LiteralPath $file
+    $sha = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+    [pscustomobject]@{ File = $info.Name; Bytes = $info.Length; SHA256 = $sha } |
+        Format-List
+}
+```
+
+This verifies exact file identity without modifying either existing evidence
+collection. Review CSV headers, recording metadata and privacy-sensitive
+fields before any Git import, retaining the source bytes unchanged in the
+private review area. An original file's SHA-256 and a sanitized *derivative*'s
+SHA-256 must be recorded separately if transformation is later necessary.
+
+The Phase 2D.3a Bluetooth-off disconnect **PASS** is unchanged. Separate Auto
+built-in and P3 regression sessions are still pending.
