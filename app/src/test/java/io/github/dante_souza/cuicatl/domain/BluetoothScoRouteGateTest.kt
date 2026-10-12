@@ -72,6 +72,27 @@ class BluetoothScoRouteGateTest {
         assertNull(second.captureFailure(42, true))
     }
 
+    @Test
+    fun `startup decisions distinguish timeout cancellation and disconnect`() {
+        val gate = BluetoothScoRouteGate(42)
+        assertTrue(gate.connectionFailureAfterWait(true)!!.contains("8 seconds"))
+        assertTrue(gate.connectionFailureAfterWait(false)!!.contains("stopped"))
+        gate.observeScoState(true)
+        assertNull(gate.connectionFailureAfterWait(true))
+        gate.observeScoState(false)
+        assertTrue(gate.connectionFailureAfterWait(true)!!.contains("disconnected"))
+    }
+
+    @Test
+    fun `route confirmation rejects mismatch and missing route`() {
+        val gate = BluetoothScoRouteGate(42)
+        gate.observeScoState(true)
+        assertNull(gate.routeConfirmationFailure(true, 42, true))
+        assertTrue(gate.routeConfirmationFailure(true, null, false)!!.contains("not confirmed"))
+        assertTrue(gate.routeConfirmationFailure(true, 43, true)!!.contains("not confirmed"))
+        assertTrue(gate.routeConfirmationFailure(false, 42, true)!!.contains("stopped"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `invalid device selection is rejected`() {
         BluetoothScoRouteGate(-1)
