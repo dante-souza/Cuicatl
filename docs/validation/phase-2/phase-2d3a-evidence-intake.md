@@ -1,7 +1,7 @@
 # Phase 2D.3a — J8 disconnect outcome and laboratory evidence intake
 
 **Recorded:** 2026-10-12  
-**Status:** IMPLEMENTATION BUILT AND INSTALLED; physical disconnect **outcome unverified**  
+**Status:** implementation and J8 Bluetooth-off disconnect gate **PASS (bounded)**; Auto/P3 regressions and raw Git archival still open  
 **Branch:** `feature/phase-2d3-bluetooth-robustness`  
 **Tracking:** [Draft PR #9](https://github.com/dante-souza/Cuicatl/pull/9), [evidence custody issue #10](https://github.com/dante-souza/Cuicatl/issues/10)
 
@@ -10,7 +10,7 @@
 - Local Windows `make check` completed successfully (Gradle unit tests, lint, debug build).
 - `make install-j8` installed the debug APK on `38c19745` / SM-J810M.
 - `make open-j8` launched Cuicatl.
-- User reported turning Bluetooth off during the capture experiment. **The saved session outcome and interruption reason have not yet been observed here**, so the device gate is **not PASS**.
+- The original Bluetooth-off attempt was reported without its final outcome. Subsequent read-only J8 session inspection on 2026-10-12 confirmed that its persisted outcome was **INTERRUPTED** with a Bluetooth SCO disconnect reason; see the dated evidence checkpoint below.
 - GitHub Actions for the prior Phase 2D.3a implementation baseline passed. The two new evidence scripts are separate changes and need their own review.
 - `startBluetoothSco()` and `stopBluetoothSco()` emitted deprecation warnings but did not fail the Android build.
 
@@ -93,13 +93,63 @@ make the experiment, microphone isolation or acoustic calibration more certain.
 | --- | --- |
 | Android unit tests/lint/debug build on J8 host | PASS |
 | Debug installation and launch | PASS |
-| Bluetooth-off physical stimulus attempted | REPORTED |
-| Session outcome + interruption reason | NOT YET OBSERVED |
-| No automatic fallback to built-in microphone | NOT YET OBSERVED |
+| Bluetooth-off physical stimulus | REPORTED; outcome corroborated by saved metadata |
+| Session outcome + interruption reason | **PASS — read-only J8 metadata** |
+| No silent successful fallback on observed disconnect | **PASS for terminal outcome**; in-flight routing trace still unverified |
 | Auto built-in / P3 regression | NOT YET OBSERVED |
-| Archive integrity before move | PASS (owner command log) |
+| Archive integrity at 2026-10-12 audit | **PASS — all 56 manifest entries** |
 | Archive privacy review + Git inclusion | OPEN — issue #10 |
-| Draft PR #9 ready to merge | NO |
+| Draft PR #9 ready to merge | **NO** — other device controls and evidence gates remain |
 
 No merge into `dev` or promotion into `main` is authorized by these
 observations alone.
+
+## Verified checkpoint — J8 Bluetooth-off test, 2026-10-12
+
+The owner supplied the console output from the **read-only, non-root**
+`scripts/phase2d3a-session-outcomes-j8.ps1` inspection after turning
+Bluetooth off mid-recording. Recorded device session metadata:
+
+| Field | Observed value |
+| --- | --- |
+| Started UTC | `2026-10-12 16:16:46` |
+| Abbreviated session ID | `74fab196` |
+| Session outcome | **`INTERRUPTED`** |
+| Requested selection | `BLUETOOTH_SCO` |
+| Routed input | `BLUETOOTH`, `type=7 · EDIFIER GM3` |
+| Frames persisted | `207` |
+| Captured duration | `20700 ms` (20.7 s) |
+| Interruption reason | `Bluetooth SCO disconnected during capture; session interrupted` |
+
+The reader exposed Android Java `Properties` escaping (`type\\=7 \\u00B7 ...`),
+which represents `type=7 · ...`; the provenance is not an extra device.
+The session was **not** marked COMPLETED. This confirms the expected terminal
+fail-closed outcome for the tested Bluetooth-off event and means the disconnect
+acceptance case is **PASS, within the scope of this one run**.
+
+This observation **does not prove** every possible disconnect race is handled,
+that the physical headset microphone was the exclusive signal source, or that
+there was never a transient intermediate route. Review additional platform
+traces and Auto/P3 controls before promoting the entire increment.
+
+### Verified archive inventory, 2026-10-12
+
+The owner also supplied a successful output from the read-only
+`phase2-evidence-audit.ps1` run on the preserved archive
+`Cuicatl-lab-evidence-20261012-132137`:
+
+| Classification | Files |
+| --- | ---: |
+| BLUETOOTH_CSV_REVIEW | 1 |
+| BLUETOOTH_OTHER_REVIEW | 9 |
+| CHARACTERIZATION_PRIVATE | 41 |
+| SYSTEM_DIAGNOSTIC_PRIVATE | 5 |
+| **Total original payloads verified** | **56** |
+
+All 56 files matched the pre-move SHA-256 manifest. No originals were modified,
+staged or published by that audit. **Only one Bluetooth `.csv` file** is in the
+Bluetooth-evidence classification. The frozen Phase 2D.2 report cites **two**
+named CSVs; determine which is present and locate the other before declaring
+source-complete archival. The manifest values and original payloads are not
+present in this repository, so no individual digest is asserted here.
+
