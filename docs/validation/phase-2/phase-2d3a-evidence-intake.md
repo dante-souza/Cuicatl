@@ -153,3 +153,48 @@ named CSVs; determine which is present and locate the other before declaring
 source-complete archival. The manifest values and original payloads are not
 present in this repository, so no individual digest is asserted here.
 
+
+## Source identification checkpoint — 2026-10-12 (local archive)
+
+After pulling feature commit `df173568`, the owner queried the preserved
+archive's `SHA256SUMS.csv` for CSV files. Exactly one row was returned:
+
+```text
+artifacts\phase2d2-j8-bluetooth\20261012-104544\bt_handshk1-923cbd17-5a88-410d-bd54-38fb1fc5127b.csv
+```
+
+The console displayed a SHA-256 digest beginning
+`5E441461996CC0097BD1FE4CDDF6EC6A90DCEDF10E673B29E4F77437`,
+but **PowerShell's table formatting truncated the remainder**. The earlier
+read-only archive audit verified the complete digest internally, but a
+fully legible 64-digit digest has not been supplied in this checkpoint.
+**Do not reconstruct or infer missing hex digits.**
+
+The other Phase 2D.2 session referenced in the freeze,
+`bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv`,
+**is not listed in this archive's CSV manifest**. It may be outside this
+archived set; its current local availability is unknown. No raw CSV has
+been added to Git, and the Phase 2D.2 freeze claim remains unchanged.
+
+A fresh invocation of the J8 metadata inspector showed **only the prior
+Bluetooth-off session** (`74fab196`, INTERRUPTED, 207 frames). Thus the
+Auto built-in and Auto/P3 regression tests are **still not observed**.
+
+To display the complete original CSV hash without modifying the archive:
+
+```powershell
+Import-Csv "$archive\SHA256SUMS.csv" |
+    Where-Object { $_.Path -match 'bt_handshk1-.*\.csv$' } |
+    Format-List Path,SHA256
+```
+
+To locate the other source CSV in Downloads without altering files:
+
+```powershell
+Get-ChildItem -LiteralPath (Join-Path $HOME 'Downloads') -Recurse -File `
+    -Filter 'bt_test*.csv' -ErrorAction SilentlyContinue |
+    Select-Object FullName,Length
+```
+
+Do not stage exports or full Android platform diagnostics before examining
+the contents for sensitive identifiers.
