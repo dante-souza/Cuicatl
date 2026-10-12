@@ -86,3 +86,23 @@ make open-j8
 Capture one short control session on Auto/built-in, one Auto/P3 session, then a selected EDIFIER GM3 Bluetooth session. Disconnect GM3 while recording and verify **INTERRUPTED**, route/provenance preserved, and no fallback to built-in. Reconnect and verify a **new explicit Start** is necessary. Export the session CSVs and save the original screenshots and SHA-256 manifest. Distinguish a genuinely disconnected device from a manually silent/muffled device: the former should interrupt as a transport/route event; the latter remains acoustically **unverified** unless there is non-zero signal.
 
 **Known limitation:** Android SCO broadcasts and `AudioRecord` behavior are vendor-dependent. The J8 regression gate is essential; unit tests cannot replace it.
+
+## Phase 2D.3a — evidence custody checkpoint, 2026-10-12
+
+The owner's archived lab files were moved outside the repository and verified
+with the pre-move SHA-256 manifest. This made the Git worktree clean without
+destroying the originals. **The archive has not been imported into Git.**
+
+The J8 successfully built and launched the 2D.3a implementation. Turning
+Bluetooth off during an experiment was reported, but the resulting persisted
+session outcome/reason is still missing. Therefore **J8 Bluetooth disconnect
+validation is not yet accepted**.
+
+See [Phase 2D.3a J8 evidence intake](phase-2d3a-evidence-intake.md) for:
+- read-only archive audit with `scripts/phase2-evidence-audit.ps1`;
+- rootless/ADB debug session outcome review with
+  `scripts/phase2d3a-session-outcomes-j8.ps1`;
+- strict PASS criteria and a separate privacy review before public raw evidence.
+
+Follow [Issue #10](https://github.com/dante-souza/Cuicatl/issues/10)
+for the older Phase 2C / 2D.2 raw-evidence archival gap.
