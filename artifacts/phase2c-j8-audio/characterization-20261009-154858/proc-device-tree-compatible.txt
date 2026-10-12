@@ -1,0 +1,1 @@
+﻿cat: /proc/device-tree/compatible: Permission denied

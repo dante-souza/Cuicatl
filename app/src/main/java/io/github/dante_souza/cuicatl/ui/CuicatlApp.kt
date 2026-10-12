@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -21,7 +22,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -32,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,12 +50,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
+import io.github.dante_souza.cuicatl.domain.InputRouteKind
+import io.github.dante_souza.cuicatl.domain.MeterProjection
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.CaptureReadiness
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationEvidenceState
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationProfile
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationStatus
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
+import io.github.dante_souza.cuicatl.platform.AndroidAudioInputDiscovery
+import io.github.dante_souza.cuicatl.platform.DiscoveredAudioInput
 import io.github.dante_souza.cuicatl.platform.AndroidAudioProcessingCapabilities
 import io.github.dante_souza.cuicatl.platform.AndroidCaptureReadinessProvider
 import io.github.dante_souza.cuicatl.platform.MeasurementService
@@ -66,6 +80,19 @@ private enum class AnalyzerPage(val label: String) {
     HISTORY("History"),
 }
 
+private data class CalibrationDraftInput(
+    val method: RootlessReferenceMethod,
+    val equipmentDescription: String,
+    val equipmentIdentifier: String,
+    val referenceLevelDbSpl: Double,
+    val referenceFrequencyHz: Double?,
+    val referenceUncertaintyDb: Double?,
+    val physicalReferenceConfirmed: Boolean,
+    val geometry: String,
+    val environmentNotes: String,
+    val procedureNotes: String,
+)
+
 @Composable
 fun CuicatlApp() {
     val context = LocalContext.current
@@ -73,9 +100,15 @@ fun CuicatlApp() {
     var page by rememberSaveable { mutableStateOf(AnalyzerPage.METER) }
     var sessionLabel by rememberSaveable { mutableStateOf("") }
     var agcRequest by rememberSaveable { mutableStateOf(AgcRequest.DEFAULT) }
+    var frequencyWeighting by rememberSaveable { mutableStateOf(FrequencyWeighting.Z) }
+    var inputSelectionMode by rememberSaveable { mutableStateOf(InputSelectionMode.AUTO) }
+    var selectedBluetoothInputId by rememberSaveable { mutableStateOf(-1) }
     var snapshot by remember { mutableStateOf(SessionRuntimeSnapshot()) }
     var savedSessions by remember { mutableStateOf(emptyList<MeasurementSession>()) }
+    var selectedSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedDetail by remember { mutableStateOf<SavedSessionDetail?>(null) }
+    var activeCalibrationProfile by remember { mutableStateOf<RootlessCalibrationProfile?>(null) }
+    val scrollState = rememberScrollState()
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var permissionGranted by remember {
         mutableStateOf(
@@ -101,6 +134,10 @@ fun CuicatlApp() {
             onDispose { }
         } else {
             savedSessions = measurementService.savedSessions()
+            activeCalibrationProfile = measurementService.activeRootlessCalibrationProfile()
+            selectedSessionId?.let { selectedId ->
+                selectedDetail = measurementService.loadSavedSession(selectedId)
+            }
             val listener: (SessionRuntimeSnapshot) -> Unit = { updated ->
                 snapshot = updated
                 if (
@@ -122,6 +159,9 @@ fun CuicatlApp() {
             action = MeasurementService.ACTION_START
             putExtra(MeasurementService.EXTRA_LABEL, sessionLabel)
             putExtra(MeasurementService.EXTRA_AGC_REQUEST, agcRequest.name)
+            putExtra(MeasurementService.EXTRA_FREQUENCY_WEIGHTING, frequencyWeighting.name)
+            putExtra(MeasurementService.EXTRA_INPUT_SELECTION_MODE, inputSelectionMode.name)
+            putExtra(MeasurementService.EXTRA_INPUT_DEVICE_ID, selectedBluetoothInputId)
         }
         ContextCompat.startForegroundService(context, intent)
     }
@@ -134,6 +174,15 @@ fun CuicatlApp() {
         if (granted) {
             startMeasurement()
         }
+    }
+
+    BackHandler(enabled = selectedDetail != null) {
+        selectedDetail = null
+        selectedSessionId = null
+    }
+
+    LaunchedEffect(page, selectedSessionId) {
+        scrollState.scrollTo(0)
     }
 
     Scaffold(
@@ -156,7 +205,7 @@ fun CuicatlApp() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -166,7 +215,7 @@ fun CuicatlApp() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Phase 1 · usable session + preservation + export",
+                text = "Device measurement · absolute SPL not calibrated",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -175,8 +224,14 @@ fun CuicatlApp() {
                 AnalyzerPage.METER -> {
                     MeterPage(
                         snapshot = snapshot,
+                        inputSelectionMode = inputSelectionMode,
+                        onInputSelectionModeChange = { inputSelectionMode = it },
+                        selectedBluetoothInputId = selectedBluetoothInputId,
+                        onBluetoothInputIdChange = { selectedBluetoothInputId = it },
                         sessionLabel = sessionLabel,
                         onLabelChange = { sessionLabel = it },
+                        frequencyWeighting = frequencyWeighting,
+                        onFrequencyWeightingChange = { frequencyWeighting = it },
                         agcRequest = agcRequest,
                         onAgcRequestChange = { agcRequest = it },
                         agcAvailable = agcAvailable,
@@ -206,14 +261,84 @@ fun CuicatlApp() {
                         savedSessions = savedSessions,
                         selectedDetail = selectedDetail,
                         onSelect = { session ->
+                            selectedSessionId = session.id
                             selectedDetail = measurementService?.loadSavedSession(session.id)
                         },
-                        onBack = { selectedDetail = null },
+                        onBack = {
+                            selectedDetail = null
+                            selectedSessionId = null
+                        },
                         onShare = { detail ->
                             val file = measurementService?.exportSavedSession(detail.session.id)
                             if (file != null) {
                                 shareCsv(context, file)
                             }
+                        },
+                        activeCalibrationProfile = activeCalibrationProfile,
+                        onCreateCalibrationDraft = { detail, input ->
+                            val service = measurementService
+                            val error =
+                                if (service == null) {
+                                    "Measurement service is unavailable."
+                                } else {
+                                    service.createRootlessCalibrationDraft(
+                                        sessionId = detail.session.id,
+                                        method = input.method,
+                                        equipmentDescription = input.equipmentDescription,
+                                        equipmentIdentifier = input.equipmentIdentifier,
+                                        referenceLevelDbSpl = input.referenceLevelDbSpl,
+                                        referenceFrequencyHz = input.referenceFrequencyHz,
+                                        referenceUncertaintyDb = input.referenceUncertaintyDb,
+                                        physicalReferenceConfirmed = input.physicalReferenceConfirmed,
+                                        geometry = input.geometry,
+                                        environmentNotes = input.environmentNotes,
+                                        procedureNotes = input.procedureNotes,
+                                    )
+                                }
+                            activeCalibrationProfile =
+                                service?.activeRootlessCalibrationProfile()
+                            error
+                        },
+                        onVerifyCalibration = { detail, allowedDrift, confirmed, notes ->
+                            val service = measurementService
+                            val error =
+                                if (service == null) {
+                                    "Measurement service is unavailable."
+                                } else {
+                                    service.verifyActiveRootlessCalibration(
+                                        verificationSessionId = detail.session.id,
+                                        maximumAllowedDriftDb = allowedDrift,
+                                        sameReferenceConditionsConfirmed = confirmed,
+                                        notes = notes,
+                                    )
+                                }
+                            activeCalibrationProfile =
+                                service?.activeRootlessCalibrationProfile()
+                            error
+                        },
+                        onClearCalibration = {
+                            measurementService?.clearReferenceAdjustment()
+                            activeCalibrationProfile = null
+                        },
+                        onDeleteSession = { detail ->
+                            val deleted = measurementService?.deleteSavedSession(detail.session.id) == true
+                            if (deleted) {
+                                selectedDetail = null
+                                selectedSessionId = null
+                                savedSessions = measurementService?.savedSessions().orEmpty()
+                                activeCalibrationProfile =
+                                    measurementService?.activeRootlessCalibrationProfile()
+                            }
+                            deleted
+                        },
+                        onSanitizeSavedSessions = {
+                            val deleted = measurementService?.sanitizeSavedSessions() ?: 0
+                            selectedDetail = null
+                            selectedSessionId = null
+                            savedSessions = measurementService?.savedSessions().orEmpty()
+                            activeCalibrationProfile =
+                                measurementService?.activeRootlessCalibrationProfile()
+                            deleted
                         },
                     )
                 }
@@ -225,8 +350,14 @@ fun CuicatlApp() {
 @Composable
 private fun MeterPage(
     snapshot: SessionRuntimeSnapshot,
+    inputSelectionMode: InputSelectionMode,
+    onInputSelectionModeChange: (InputSelectionMode) -> Unit,
+    selectedBluetoothInputId: Int,
+    onBluetoothInputIdChange: (Int) -> Unit,
     sessionLabel: String,
     onLabelChange: (String) -> Unit,
+    frequencyWeighting: FrequencyWeighting,
+    onFrequencyWeightingChange: (FrequencyWeighting) -> Unit,
     agcRequest: AgcRequest,
     onAgcRequestChange: (AgcRequest) -> Unit,
     agcAvailable: Boolean,
@@ -242,44 +373,89 @@ private fun MeterPage(
             snapshot.status == SessionRuntimeSnapshot.Status.FINALIZING
     val current = snapshot.currentFrame
     val session = snapshot.activeSession
+    val effectiveWeighting = if (isActive) session?.frequencyWeighting ?: frequencyWeighting else frequencyWeighting
     val effectiveAgcRequest =
         if (isActive) session?.agcRequest ?: agcRequest else agcRequest
+    val context = LocalContext.current
+    val inputDiscovery = remember(context) { AndroidAudioInputDiscovery(context) }
+    var discoveredInputs by remember { mutableStateOf<List<DiscoveredAudioInput>?>(null) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Digital level", style = MaterialTheme.typography.titleLarge)
             Text(
-                text = formatDb(current?.rmsDbfs),
-                style = MaterialTheme.typography.headlineMedium,
+                effectiveWeighting.name + "-weighted digital level",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                text = formatDb(current?.weightedRmsDbfs ?: current?.rmsDbfs),
+                style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text("RMS · dBFS")
-            Text("Sample peak: " + formatDb(current?.samplePeakDbfs))
-            Text("Elapsed: " + formatDuration(session?.elapsedMillis ?: 0L))
-            Text("Captured: " + formatDuration(session?.capturedMillis ?: 0L))
-            Text("Source: " + (session?.source?.ifBlank { "—" } ?: "—"))
             Text(
-                "Sample rate: " +
-                    if ((session?.sampleRateHz ?: 0) > 0) {
-                        session?.sampleRateHz.toString() + " Hz"
-                    } else {
-                        "—"
-                    },
+                "Current · weighted RMS",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
             )
+
+            val statistics = snapshot.levelStatistics
+            if (statistics != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    MeterStatistic("Minimum", formatDb(statistics.minimumDbfs))
+                    MeterStatistic("Maximum", formatDb(statistics.maximumDbfs))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    MeterStatistic("Leq", formatDb(statistics.leqDbfs))
+                    MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
+                }
+            } else {
+                MeterStatistic("Sample peak", formatDb(current?.samplePeakDbfs))
+            }
+
             Text(
-                "Clipped samples, latest frame: " +
-                    (current?.clippedSampleCount ?: 0),
+                "Time: " +
+                    formatDuration(session?.elapsedMillis ?: 0L) +
+                    " · " +
+                    formatDuration(session?.capturedMillis ?: 0L) +
+                    " captured",
+                style = MaterialTheme.typography.bodyMedium,
             )
+
+            val source = session?.source?.ifBlank { "—" } ?: "—"
+            val sampleRateHz = session?.sampleRateHz ?: 0
+            val sampleRate =
+                if (sampleRateHz > 0) {
+                    formatSampleRate(sampleRateHz)
+                } else {
+                    "—"
+                }
+            Text(
+                "Capture: " + source + " · " + sampleRate,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (isActive) {
+                Text(
+                    "Input: " +
+                        (session?.inputRouteDisplay() ?: "Auto → opening capture route…"),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+
             Text(
                 if (snapshot.clippedFrameCount > 0) {
-                    "Clipping observed in this session: " +
+                    "Clipping: " +
                         snapshot.clippedFrameCount + " frames · " +
                         snapshot.clippedSampleCount + " samples"
                 } else {
-                    "Session clipping: none observed"
+                    "Clipping: none observed"
                 },
                 color =
                     if (snapshot.clippedFrameCount > 0) {
@@ -288,15 +464,42 @@ private fun MeterPage(
                         MaterialTheme.colorScheme.outline
                     },
             )
-            Text(
-                snapshot.message,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            Text(
-                "Digital input only. Cuicatl is not displaying calibrated SPL in Phase 1.",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-            )
+
+            val routineRunningMessage =
+                "Measurement running. Values are digital dBFS, not SPL."
+            if (
+                snapshot.message.isNotBlank() &&
+                snapshot.message != routineRunningMessage
+            ) {
+                Text(
+                    snapshot.message,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+
+            val calibrationSnapshot = session?.calibrationSnapshot
+            when (calibrationSnapshot?.evidenceState) {
+                RootlessCalibrationEvidenceState.REFERENCE_ADJUSTED_ESTIMATE -> {
+                    Text(
+                        "Reference-adjusted profile matched · absolute SPL display remains disabled.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                RootlessCalibrationEvidenceState.PROFILE_MISMATCH -> {
+                    Text(
+                        "Calibration profile mismatch · absolute SPL unavailable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                RootlessCalibrationEvidenceState.UNCALIBRATED,
+                null -> Unit
+            }
         }
     }
 
@@ -307,7 +510,8 @@ private fun MeterPage(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Live history", style = MaterialTheme.typography.titleMedium)
-                LevelHistoryChart(snapshot.history)
+                Text("Weighting: " + (snapshot.activeSession?.frequencyWeighting?.name ?: "Z") + " · digital dBFS")
+                LevelHistoryChart(snapshot.history, snapshot.activeSession?.frequencyWeighting ?: FrequencyWeighting.Z)
                 Text(
                     "100 ms persisted measurement frames · chart is presentation only",
                     style = MaterialTheme.typography.bodySmall,
@@ -322,99 +526,215 @@ private fun MeterPage(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
-                value = sessionLabel,
-                onValueChange = onLabelChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Session label") },
-                enabled = !isActive,
-                singleLine = true,
-            )
-
-            Text(
-                "Android AGC",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AgcRequest.entries.forEach { request ->
-                    val supported =
-                        request == AgcRequest.DEFAULT || agcAvailable
-                    if (effectiveAgcRequest == request) {
-                        Button(
-                            onClick = { onAgcRequestChange(request) },
-                            enabled = !isActive && supported,
-                        ) {
-                            Text(request.displayLabel())
-                        }
-                    } else {
-                        TextButton(
-                            onClick = { onAgcRequestChange(request) },
-                            enabled = !isActive && supported,
-                        ) {
-                            Text(request.displayLabel())
-                        }
-                    }
-                }
-            }
-            Text(
-                when {
-                    !agcAvailable ->
-                        "Standard Android AGC is unavailable on this device; Off/On cannot be applied."
-                    isActive ->
-                        "AGC request is frozen for this active session: " +
-                            effectiveAgcRequest.displayLabel()
-                    else ->
-                        "Choose before Start. Default observes without changing AGC; Off/On request a fixed Android effect state."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            if (isActive && !session?.processingState.isNullOrBlank()) {
+            if (isActive) {
                 Text(
-                    "Applied processing: " + session?.processingState.orEmpty(),
+                    "Active session",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    session?.label?.ifBlank { "Unlabeled session" } ?: "Opening session…",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    effectiveWeighting.name +
+                        " weighting · AGC " +
+                        effectiveAgcRequest.displayLabel(),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Measurement configuration is fixed until this session ends.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
-            }
+                Button(
+                    onClick = onStop,
+                    enabled = snapshot.status != SessionRuntimeSnapshot.Status.FINALIZING,
+                ) {
+                    Text(
+                        if (snapshot.status == SessionRuntimeSnapshot.Status.FINALIZING) {
+                            "Finalizing…"
+                        } else {
+                            "Stop"
+                        },
+                    )
+                }
+            } else {
+                OutlinedTextField(
+                    value = sessionLabel,
+                    onValueChange = onLabelChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Session label") },
+                    singleLine = true,
+                )
 
-            val readinessText =
-                if (permissionDenied) {
-                    "Microphone permission denied. No capture was started."
-                } else {
-                    when (readiness) {
-                        CaptureReadiness.Ready ->
-                            "Ready. Recording starts only when you press Start."
-
-                        is CaptureReadiness.NotReady ->
-                            readiness.detail ?: "Microphone capture is not ready."
+                Text("Frequency weighting", style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FrequencyWeighting.entries.forEach { choice ->
+                        if (effectiveWeighting == choice) {
+                            Button(onClick = { onFrequencyWeightingChange(choice) }) {
+                                Text(choice.name)
+                            }
+                        } else {
+                            TextButton(onClick = { onFrequencyWeightingChange(choice) }) {
+                                Text(choice.name)
+                            }
+                        }
                     }
                 }
+                Text(
+                    "A applies frequency weighting; Z is nominally flat digital analysis. Fixed from Start through Stop.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+
+                Text(
+                    "Android AGC",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AgcRequest.entries.forEach { request ->
+                        val supported =
+                            request == AgcRequest.DEFAULT || agcAvailable
+                        if (effectiveAgcRequest == request) {
+                            Button(
+                                onClick = { onAgcRequestChange(request) },
+                                enabled = supported,
+                            ) {
+                                Text(request.displayLabel())
+                            }
+                        } else {
+                            TextButton(
+                                onClick = { onAgcRequestChange(request) },
+                                enabled = supported,
+                            ) {
+                                Text(request.displayLabel())
+                            }
+                        }
+                    }
+                }
+                Text(
+                    if (!agcAvailable) {
+                        "Standard Android AGC is unavailable on this device; Off/On cannot be applied."
+                    } else {
+                        "Default observes without changing AGC; Off/On request a fixed Android effect state."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+
+                val readinessText =
+                    if (permissionDenied) {
+                        "Microphone permission denied. No capture was started."
+                    } else {
+                        when (readiness) {
+                            CaptureReadiness.Ready ->
+                                "Ready. Recording starts only when you press Start."
+
+                            is CaptureReadiness.NotReady ->
+                                readiness.detail ?: "Microphone capture is not ready."
+                        }
+                    }
+                Text(
+                    readinessText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+
+                Button(
+                    onClick = onStart,
+                    enabled =
+                        (readiness !is CaptureReadiness.NotReady ||
+                            readiness.reason != CaptureReadiness.Reason.MICROPHONE_UNAVAILABLE) &&
+                        (inputSelectionMode == InputSelectionMode.AUTO ||
+                            (selectedBluetoothInputId >= 0 &&
+                                discoveredInputs.orEmpty().any { it.id == selectedBluetoothInputId &&
+                                    it.routeKind == InputRouteKind.BLUETOOTH })),
+                ) {
+                    Text(if (permissionGranted) "Start" else "Grant + Start")
+                }
+            }
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Recording input", style = MaterialTheme.typography.titleMedium)
+            TextButton(
+                onClick = { onInputSelectionModeChange(InputSelectionMode.AUTO) },
+                enabled = !isActive,
+            ) {
+                Text(if (inputSelectionMode == InputSelectionMode.AUTO) {
+                    "Automatic — Android default (selected)"
+                } else {
+                    "Automatic — Android default"
+                })
+            }
             Text(
-                readinessText,
+                "Cuicatl does not request a specific microphone in this mode. The actual input is reported during recording.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
-
-            Button(
-                onClick = if (isActive) onStop else onStart,
-                enabled =
-                    isActive ||
-                        readiness !is CaptureReadiness.NotReady ||
-                        readiness.reason != CaptureReadiness.Reason.MICROPHONE_UNAVAILABLE,
-            ) {
-                Text(
-                    when (snapshot.status) {
-                        SessionRuntimeSnapshot.Status.STARTING -> "Stop"
-                        SessionRuntimeSnapshot.Status.RUNNING -> "Stop"
-                        SessionRuntimeSnapshot.Status.FINALIZING -> "Finalizing…"
-                        else -> if (permissionGranted) "Start" else "Grant + Start"
+            val bluetoothInputs = discoveredInputs.orEmpty()
+                .filter { it.routeKind == InputRouteKind.BLUETOOTH }
+            bluetoothInputs.forEach { input ->
+                TextButton(
+                    onClick = {
+                        onBluetoothInputIdChange(input.id)
+                        onInputSelectionModeChange(InputSelectionMode.BLUETOOTH_SCO)
                     },
-                )
+                    enabled = !isActive,
+                ) {
+                    Text(input.name + if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO &&
+                        selectedBluetoothInputId == input.id) " (selected)" else " — Bluetooth SCO")
+                }
             }
+            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO &&
+                bluetoothInputs.none { it.id == selectedBluetoothInputId }) {
+                Text("Selected Bluetooth input unavailable. Refresh or choose Automatic.",
+                    color = MaterialTheme.colorScheme.error)
+            }
+            Text("Available audio inputs", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Diagnostic discovery only · listing an input does not mean it is recording.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Button(
+                onClick = { discoveredInputs = inputDiscovery.discover() },
+            ) {
+                Text("Refresh inputs")
+            }
+            when (val inputs = discoveredInputs) {
+                null -> Text("Press Refresh inputs to enumerate Android input devices.")
+                else -> {
+                    if (inputs.isEmpty()) {
+                        Text("Android reported no input devices.")
+                    }
+                    inputs.forEach { input ->
+                        Text(
+                            input.name + " · " + input.routeKind.name +
+                                " · type=" + input.type + " · id=" + input.id,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+            Text(
+                "Active capture route: " +
+                    if (isActive) {
+                        session?.inputRouteDisplay() ?: "Not reported yet"
+                    } else {
+                        "No active measurement"
+                    },
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -427,12 +747,56 @@ private fun HistoryPage(
     onSelect: (MeasurementSession) -> Unit,
     onBack: () -> Unit,
     onShare: (SavedSessionDetail) -> Unit,
+    activeCalibrationProfile: RootlessCalibrationProfile?,
+    onCreateCalibrationDraft: (SavedSessionDetail, CalibrationDraftInput) -> String?,
+    onVerifyCalibration: (SavedSessionDetail, Double, Boolean, String) -> String?,
+    onClearCalibration: () -> Unit,
+    onDeleteSession: (SavedSessionDetail) -> Boolean,
+    onSanitizeSavedSessions: () -> Int,
 ) {
+    var showSanitizeConfirmation by remember { mutableStateOf(false) }
+    var sanitizeMessage by remember { mutableStateOf<String?>(null) }
+
+    if (showSanitizeConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showSanitizeConfirmation = false },
+            title = { Text("Sanitize saved sessions?") },
+            text = {
+                Text(
+                    "This removes all saved Cuicatl session records, cached CSV exports, and rootless calibration profiles. " +
+                        "An active recording is not deleted. Copies already shared or backed up are not affected. " +
+                        "This is logical deletion, not guaranteed forensic secure erasure.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deleted = onSanitizeSavedSessions()
+                        sanitizeMessage = "Deleted " + deleted + " saved session(s)."
+                        showSanitizeConfirmation = false
+                    },
+                ) {
+                    Text("Delete all local sessions", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSanitizeConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     if (selectedDetail != null) {
         SavedSessionDetailCard(
             detail = selectedDetail,
             onBack = onBack,
             onShare = onShare,
+            activeCalibrationProfile = activeCalibrationProfile,
+            onCreateCalibrationDraft = onCreateCalibrationDraft,
+            onVerifyCalibration = onVerifyCalibration,
+            onClearCalibration = onClearCalibration,
+            onDeleteSession = onDeleteSession,
         )
         return
     }
@@ -444,7 +808,7 @@ private fun HistoryPage(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Current session", style = MaterialTheme.typography.titleLarge)
-                LevelHistoryChart(snapshot.history)
+                LevelHistoryChart(snapshot.history, snapshot.activeSession?.frequencyWeighting ?: FrequencyWeighting.Z)
                 Text(
                     "Page changes do not own or reset capture.",
                     style = MaterialTheme.typography.bodySmall,
@@ -459,11 +823,29 @@ private fun HistoryPage(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Saved sessions", style = MaterialTheme.typography.titleLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Saved sessions", style = MaterialTheme.typography.titleLarge)
+                if (savedSessions.isNotEmpty()) {
+                    TextButton(onClick = { showSanitizeConfirmation = true }) {
+                        Text("Sanitize", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+            sanitizeMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
 
             if (savedSessions.isEmpty()) {
                 Text(
-                    "No saved Phase 1 sessions yet.",
+                    "No saved sessions yet.",
                     color = MaterialTheme.colorScheme.outline,
                 )
             } else {
@@ -502,10 +884,68 @@ private fun SavedSessionDetailCard(
     detail: SavedSessionDetail,
     onBack: () -> Unit,
     onShare: (SavedSessionDetail) -> Unit,
+    activeCalibrationProfile: RootlessCalibrationProfile?,
+    onCreateCalibrationDraft: (SavedSessionDetail, CalibrationDraftInput) -> String?,
+    onVerifyCalibration: (SavedSessionDetail, Double, Boolean, String) -> String?,
+    onClearCalibration: () -> Unit,
+    onDeleteSession: (SavedSessionDetail) -> Boolean,
 ) {
     val session = detail.session
+    var showDeleteConfirmation by remember(detail.session.id) { mutableStateOf(false) }
+    var deleteMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
+    var referenceMethod by remember(detail.session.id) {
+        mutableStateOf(RootlessReferenceMethod.REFERENCE_SOUND_LEVEL_METER)
+    }
+    var equipmentDescription by remember(detail.session.id) { mutableStateOf("") }
+    var equipmentIdentifier by remember(detail.session.id) { mutableStateOf("") }
+    var referenceLevelText by remember(detail.session.id) { mutableStateOf("") }
+    var referenceFrequencyText by remember(detail.session.id) { mutableStateOf("") }
+    var referenceUncertaintyText by remember(detail.session.id) { mutableStateOf("") }
+    var referenceGeometry by remember(detail.session.id) { mutableStateOf("") }
+    var environmentNotes by remember(detail.session.id) { mutableStateOf("") }
+    var procedureNotes by remember(detail.session.id) { mutableStateOf("") }
+    var physicalReferenceConfirmed by remember(detail.session.id) { mutableStateOf(false) }
+    var calibrationMessage by remember(detail.session.id) { mutableStateOf<String?>(null) }
+    var allowedDriftText by remember(detail.session.id) { mutableStateOf("") }
+    var verificationNotes by remember(detail.session.id) { mutableStateOf("") }
+    var sameReferenceConditionsConfirmed by remember(detail.session.id) {
+        mutableStateOf(false)
+    }
     val clippedFrames = detail.frames.count { it.clippedSampleCount > 0 }
     val clippedSamples = detail.frames.sumOf { it.clippedSampleCount.toLong() }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete this local session?") },
+            text = {
+                Text(
+                    "This removes the app-private measurement record and any cached CSV created by Cuicatl. " +
+                        "Copies already shared or saved elsewhere are not affected. " +
+                        "If this session is the source of calibration profiles, profiles derived from it are removed.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deleted = onDeleteSession(detail)
+                        if (!deleted) {
+                            deleteMessage = "The session could not be deleted."
+                        }
+                        showDeleteConfirmation = false
+                    },
+                ) {
+                    Text("Delete local session", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -518,6 +958,16 @@ private fun SavedSessionDetailCard(
             ) {
                 TextButton(onClick = onBack) { Text("Back") }
                 Button(onClick = { onShare(detail) }) { Text("Share CSV") }
+            }
+            TextButton(onClick = { showDeleteConfirmation = true }) {
+                Text("Delete local session", color = MaterialTheme.colorScheme.error)
+            }
+            deleteMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             Text(
@@ -532,7 +982,12 @@ private fun SavedSessionDetailCard(
             )
             Text("Source: " + session.source)
             Text("Sample rate: " + session.sampleRateHz + " Hz")
-            Text("Input: " + session.inputIdentity)
+            Text("Input: " + session.inputRouteDisplay())
+            Text(
+                "Android route: " + session.inputIdentity.ifBlank { "not reported" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
             Text(
                 "AGC request: " +
                     (session.agcRequest?.displayLabel() ?: "Unknown (legacy session)"),
@@ -565,18 +1020,344 @@ private fun SavedSessionDetailCard(
 
             Spacer(modifier = Modifier.height(4.dp))
             Text("Recorded history", style = MaterialTheme.typography.titleMedium)
-            LevelHistoryChart(detail.frames)
+            Text("Weighting: " + session.frequencyWeighting.name + " · digital dBFS")
+            val statistics = remember(detail) { MeterProjection.statistics(detail.frames, session.frequencyWeighting) }
+            Text("Current: " + formatDb(statistics.currentDbfs))
+            Text("Minimum: " + formatDb(statistics.minimumDbfs))
+            Text("Maximum: " + formatDb(statistics.maximumDbfs))
+            Text("Leq: " + formatDb(statistics.leqDbfs))
+            LevelHistoryChart(detail.frames, session.frequencyWeighting)
             Text(
                 "CSV schema 1 · validated Phase 1 digital measurement export.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
+
+            session.calibrationSnapshot?.let { snapshot ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Session calibration snapshot", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    snapshot.evidenceState.name.lowercase().replace('_', ' ') +
+                        " · " + snapshot.profileId + " v" + snapshot.profileVersion,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Reference: " +
+                        String.format(Locale.US, "%.2f dB SPL", snapshot.referenceLevelDbSpl) +
+                        " · correction " +
+                        String.format(Locale.US, "%+.2f dB", snapshot.referenceCorrectionDb),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Rootless calibration", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Use only deliberate measurements made against a real physical reference. " +
+                    "Creating or validating a profile still does not enable SPL display in this phase.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
+            activeCalibrationProfile?.let { profile ->
+                Text(
+                    "Active profile: " + profile.status.name +
+                        " · " + profile.id + " v" + profile.version,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Method: " + profile.procedure.method.displayLabel(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Equipment/source: " + profile.procedure.equipmentDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Reference: " +
+                        String.format(
+                            Locale.US,
+                            "%.2f dB SPL",
+                            profile.adjustment.referenceLevelDbSpl,
+                        ) +
+                        " · measured " +
+                        String.format(
+                            Locale.US,
+                            "%.2f dBFS",
+                            profile.adjustment.measuredReferenceLevelDbfs,
+                        ) +
+                        " · correction " +
+                        String.format(Locale.US, "%+.2f dB", profile.adjustment.correctionDb),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                profile.verification?.let { verification ->
+                    Text(
+                        "Verification drift: " +
+                            String.format(Locale.US, "%.2f dB", verification.observedDriftDb) +
+                            " · allowed " +
+                            String.format(Locale.US, "%.2f dB", verification.maximumAllowedDriftDb) +
+                            " · " + if (verification.passes) "PASS" else "FAIL",
+                        style = MaterialTheme.typography.bodySmall,
+                        color =
+                            if (verification.passes) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                    )
+                }
+
+                if (profile.sourceSessionId == session.id) {
+                    Text(
+                        "This session is reference observation #1 for the active profile.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                } else if (profile.status == RootlessCalibrationStatus.DRAFT) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Verification observation #2", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Use this only if this session was recorded under the same physical reference, geometry and conditions as observation #1.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    OutlinedTextField(
+                        value = allowedDriftText,
+                        onValueChange = { allowedDriftText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Maximum allowed drift · dB") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = verificationNotes,
+                        onValueChange = { verificationNotes = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Verification notes") },
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = sameReferenceConditionsConfirmed,
+                            onCheckedChange = { sameReferenceConditionsConfirmed = it },
+                        )
+                        Text(
+                            "I confirm the same physical reference, geometry and conditions were repeated.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val allowed = allowedDriftText.toDoubleOrNull()
+                            calibrationMessage =
+                                when {
+                                    allowed == null || allowed < 0.0 ->
+                                        "Enter a non-negative maximum allowed drift."
+                                    !sameReferenceConditionsConfirmed ->
+                                        "Confirm that the same physical reference setup was repeated."
+                                    else ->
+                                        onVerifyCalibration(
+                                            detail,
+                                            allowed,
+                                            true,
+                                            verificationNotes,
+                                        ) ?: "Calibration profile validated. SPL display remains disabled pending the remaining Phase 2 activation gates."
+                                }
+                        },
+                    ) {
+                        Text("Use this session to verify")
+                    }
+                } else if (profile.status == RootlessCalibrationStatus.VALIDATED) {
+                    Text(
+                        "The active profile is validated. SPL display remains disabled until the remaining Phase 2 activation gates are complete.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                TextButton(onClick = onClearCalibration) {
+                    Text("Clear active calibration")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Create calibration draft from this session",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "This saved session becomes reference observation #1. It must be at least 10 s, unclipped, and recorded while the physical reference was actually present.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
+            Text("Reference method", fontWeight = FontWeight.SemiBold)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                RootlessReferenceMethod.entries.forEach { method ->
+                    if (referenceMethod == method) {
+                        Button(onClick = { referenceMethod = method }) {
+                            Text(method.displayLabel())
+                        }
+                    } else {
+                        TextButton(onClick = { referenceMethod = method }) {
+                            Text(method.displayLabel())
+                        }
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = equipmentDescription,
+                onValueChange = { equipmentDescription = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reference equipment / source") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = equipmentIdentifier,
+                onValueChange = { equipmentIdentifier = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Equipment identifier / serial · optional") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceLevelText,
+                onValueChange = { referenceLevelText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Known reference level · dB SPL") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceFrequencyText,
+                onValueChange = { referenceFrequencyText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reference frequency · Hz · optional") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceUncertaintyText,
+                onValueChange = { referenceUncertaintyText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Reference uncertainty · dB · optional") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = referenceGeometry,
+                onValueChange = { referenceGeometry = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Geometry / coupling") },
+            )
+            OutlinedTextField(
+                value = environmentNotes,
+                onValueChange = { environmentNotes = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Environment notes") },
+            )
+            OutlinedTextField(
+                value = procedureNotes,
+                onValueChange = { procedureNotes = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Procedure notes") },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = physicalReferenceConfirmed,
+                    onCheckedChange = { physicalReferenceConfirmed = it },
+                )
+                Text(
+                    "I confirm this session was recorded while the physical reference described above was actually present.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Button(
+                onClick = {
+                    val level = referenceLevelText.toDoubleOrNull()
+                    val frequency =
+                        referenceFrequencyText.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+                    val uncertainty =
+                        referenceUncertaintyText.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+
+                    calibrationMessage =
+                        when {
+                            level == null ->
+                                "Enter a numeric reference SPL."
+                            equipmentDescription.isBlank() ->
+                                "Enter the physical reference equipment or source."
+                            referenceGeometry.isBlank() ->
+                                "Document the geometry or coupling."
+                            referenceFrequencyText.isNotBlank() && frequency == null ->
+                                "Reference frequency must be numeric when provided."
+                            referenceUncertaintyText.isNotBlank() &&
+                                (uncertainty == null || uncertainty < 0.0) ->
+                                "Reference uncertainty must be a non-negative number."
+                            !physicalReferenceConfirmed ->
+                                "Confirm that the physical reference was actually present."
+                            else ->
+                                onCreateCalibrationDraft(
+                                    detail,
+                                    CalibrationDraftInput(
+                                        method = referenceMethod,
+                                        equipmentDescription = equipmentDescription,
+                                        equipmentIdentifier = equipmentIdentifier,
+                                        referenceLevelDbSpl = level,
+                                        referenceFrequencyHz = frequency,
+                                        referenceUncertaintyDb = uncertainty,
+                                        physicalReferenceConfirmed = true,
+                                        geometry = referenceGeometry,
+                                        environmentNotes = environmentNotes,
+                                        procedureNotes = procedureNotes,
+                                    ),
+                                ) ?: "Calibration draft stored as observation #1. Record a second session under the same reference to verify it. SPL remains disabled."
+                        }
+                },
+            ) {
+                Text("Store calibration draft")
+            }
+            calibrationMessage?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color =
+                        if (message.startsWith("Verification failed")) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
+private fun MeterStatistic(label: String, value: String) {
+    Column {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+private fun formatSampleRate(sampleRateHz: Int): String =
+    if (sampleRateHz > 0 && sampleRateHz % 1000 == 0) {
+        (sampleRateHz / 1000).toString() + " kHz"
+    } else {
+        sampleRateHz.toString() + " Hz"
+    }
+
+@Composable
+private fun LevelHistoryChart(frames: List<MeasurementFrame>, weighting: FrequencyWeighting) {
     val lineColor = MaterialTheme.colorScheme.primary
     val guideColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     val displayFrames = remember(frames) {
@@ -587,17 +1368,15 @@ private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
             frames.chunked(chunk).map { group -> group.last() }
         }
     }
-    val values = displayFrames.mapNotNull { it.rmsDbfs }
-
-    if (values.size < 2) {
-        Text("Waiting for enough non-zero frames…")
+    // Preserve sample positions and missing/zero intervals: no false bridging.
+    val values = displayFrames.map { MeterProjection.level(it, weighting) }
+    if (values.count { it != null } < 2) {
+        Text("Waiting for enough valid non-zero frames…")
         return
     }
 
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp),
+        modifier = Modifier.fillMaxWidth().height(180.dp),
     ) {
         drawLine(
             color = guideColor,
@@ -609,26 +1388,58 @@ private fun LevelHistoryChart(frames: List<MeasurementFrame>) {
             start = Offset(0f, 0f),
             end = Offset(size.width, 0f),
         )
-
         values.zipWithNext().forEachIndexed { index, pair ->
-            val x1 = size.width * index / (values.size - 1).toFloat()
-            val x2 = size.width * (index + 1) / (values.size - 1).toFloat()
-            val y1 = dbToY(pair.first, size.height)
-            val y2 = dbToY(pair.second, size.height)
-            drawLine(
-                color = lineColor,
-                start = Offset(x1, y1),
-                end = Offset(x2, y2),
-                strokeWidth = 3f,
-            )
+            val first = pair.first
+            val second = pair.second
+            if (first != null && second != null) {
+                drawLine(
+                    color = lineColor,
+                    start = Offset(size.width * index / (values.size - 1).toFloat(), dbToY(first, size.height)),
+                    end = Offset(size.width * (index + 1) / (values.size - 1).toFloat(), dbToY(second, size.height)),
+                    strokeWidth = 3f,
+                )
+            }
         }
     }
+}
+
+private fun MeasurementSession.inputRouteDisplay(): String {
+    val route =
+        when (inputRouteKind) {
+            InputRouteKind.BUILT_IN -> "Built-in microphone"
+            InputRouteKind.WIRED -> "Wired microphone"
+            InputRouteKind.USB -> "USB microphone"
+            InputRouteKind.BLUETOOTH -> "Bluetooth microphone"
+            InputRouteKind.OTHER -> inputDeviceName.ifBlank { "Other input" }
+            InputRouteKind.UNKNOWN ->
+                inputIdentity.ifBlank { "Unknown input" }
+        }
+    val device =
+        inputDeviceName
+            .takeIf {
+                it.isNotBlank() &&
+                    inputRouteKind != InputRouteKind.BUILT_IN &&
+                    !route.contains(it, ignoreCase = true)
+            }
+            ?.let { " · " + it }
+            .orEmpty()
+    val requestLabel = when (inputSelectionMode) {
+        InputSelectionMode.AUTO -> "Auto"
+        InputSelectionMode.BLUETOOTH_SCO -> "Bluetooth requested"
+    }
+    return requestLabel + " → " + route + device
 }
 
 private fun AgcRequest.displayLabel(): String = when (this) {
     AgcRequest.DEFAULT -> "Default"
     AgcRequest.FORCE_OFF -> "Off"
     AgcRequest.FORCE_ON -> "On"
+}
+
+private fun RootlessReferenceMethod.displayLabel(): String = when (this) {
+    RootlessReferenceMethod.ACOUSTIC_CALIBRATOR -> "Acoustic calibrator"
+    RootlessReferenceMethod.REFERENCE_SOUND_LEVEL_METER -> "Reference sound-level meter"
+    RootlessReferenceMethod.DOCUMENTED_COMPARISON_SOURCE -> "Documented comparison source"
 }
 
 private fun dbToY(db: Double, height: Float): Float {

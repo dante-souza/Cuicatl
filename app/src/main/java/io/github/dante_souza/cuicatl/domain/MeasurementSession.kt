@@ -13,10 +13,15 @@ data class MeasurementSession(
     val source: String = "",
     val sampleRateHz: Int = 0,
     val inputIdentity: String = "",
+    val inputSelectionMode: InputSelectionMode = InputSelectionMode.AUTO,
+    val inputRouteKind: InputRouteKind = InputRouteKind.UNKNOWN,
+    val inputDeviceName: String = "",
     val agcRequest: AgcRequest? = null,
     val processingState: String = "",
     val frameCount: Long = 0L,
     val interruptionReason: String? = null,
+    val frequencyWeighting: FrequencyWeighting = FrequencyWeighting.Z,
+    val calibrationSnapshot: CalibrationSessionSnapshot? = null,
 )
 
 enum class SessionState {

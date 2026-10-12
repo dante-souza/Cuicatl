@@ -6,6 +6,7 @@ Repository: <https://github.com/dante-souza/Cuicatl>.
 
 Status: reviewed planning baseline with a revised execution order. The author reassessment and supplied independent review have been reconciled in the [review-disposition record](cuicatl-planning-review-disposition-2026-10-08.md). This document specifies intended behavior and acceptance gates; it does not claim that capture, calibration, tests, or release gates have passed. Implementation choices marked **proposed** remain subject to device evidence and design review.
 
+**2026-10-11 scope update:** the v0.1 calibration gate was revised by [v0.1 measurement-scope decision](v0.1-measurement-scope-decision-2026-10-11.md). Device measurement with absolute SPL explicitly uncalibrated is now an accepted v0.1 product state; physical acoustic calibration is deferred and is not a release blocker.\n\n
 Revision 1 remains available in [Git history at the published planning baseline](https://github.com/dante-souza/Cuicatl/blob/7a96706f2114f411bfc5f59fcaff57733557da2d/docs/planning/cuicatl-development-plan-2026-10-08.md). Revision 2 changes scope and sequencing without marking application milestones complete.
 
 ## 1. Product intent and established requirements

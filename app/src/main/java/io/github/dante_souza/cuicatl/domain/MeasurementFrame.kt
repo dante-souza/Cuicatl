@@ -17,6 +17,8 @@ data class MeasurementFrame(
     val timingQuality: TimingQuality = TimingQuality.MONOTONIC_FALLBACK,
     val clippedSampleCount: Int = 0,
     val qualityFlags: Set<QualityFlag> = emptySet(),
+    val weightedMeanSquareFs: Double? = null,
+    val weightedRmsDbfs: Double? = null,
 )
 
 enum class SignalState {

@@ -3,6 +3,9 @@ package io.github.dante_souza.cuicatl.platform
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -13,6 +16,10 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.SystemClock
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputRouteKind
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
+import io.github.dante_souza.cuicatl.domain.StreamingFrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementMath
@@ -28,6 +35,8 @@ data class CaptureConfiguration(
     val source: String,
     val sampleRateHz: Int,
     val inputIdentity: String,
+    val inputRouteKind: InputRouteKind,
+    val inputDeviceName: String,
     val processingState: String,
 )
 
@@ -35,6 +44,9 @@ class AndroidSessionCapture(
     context: Context,
     private val sessionId: String,
     private val agcRequest: AgcRequest,
+    private val frequencyWeighting: FrequencyWeighting,
+    private val inputSelectionMode: InputSelectionMode = InputSelectionMode.AUTO,
+    private val requestedInputDeviceId: Int = -1,
     private val onStarted: (CaptureConfiguration) -> Unit,
     private val onFrame: (MeasurementFrame) -> Unit,
     private val onStopped: (elapsedMillis: Long) -> Unit,
@@ -75,12 +87,19 @@ class AndroidSessionCapture(
     private fun runCapture() {
         var record: AudioRecord? = null
         var preprocessorAudit: CapturePreprocessorAudit? = null
+        val audioManager = appContext.getSystemService(AudioManager::class.java)
+        var scoStarted = false
+        var scoReceiver: BroadcastReceiver? = null
+        val scoConnected = AtomicBoolean(false)
         var sequence = 0L
         var intervalStartSample = 0L
         var intervalSampleCount = 0
         var intervalSumSquares = 0.0
+        var weightedSumSquares = 0.0
         var intervalPeak = 0.0
         var intervalClipped = 0
+        var nonzeroSamplesObserved = false
+        var capturedSamples = 0L
 
         try {
             val selection = openFirstSupportedRecord()
@@ -88,6 +107,42 @@ class AndroidSessionCapture(
 
             val active = selection.record
             record = active
+            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                val target = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    .firstOrNull { it.id == requestedInputDeviceId &&
+                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                    ?: error("Requested Bluetooth SCO microphone unavailable")
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: Intent) {
+                        if (intent.action == AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED) {
+                            scoConnected.set(
+                                intent.getIntExtra(
+                                    AudioManager.EXTRA_SCO_AUDIO_STATE,
+                                    AudioManager.SCO_AUDIO_STATE_ERROR,
+                                ) == AudioManager.SCO_AUDIO_STATE_CONNECTED,
+                            )
+                        }
+                    }
+                }
+                scoReceiver = receiver
+                appContext.registerReceiver(
+                    receiver,
+                    IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED),
+                )
+                audioManager.startBluetoothSco()
+                scoStarted = true
+                val scoDeadline = SystemClock.elapsedRealtime() + 8_000L
+                while (running.get() && !scoConnected.get() &&
+                    SystemClock.elapsedRealtime() < scoDeadline) {
+                    Thread.sleep(100)
+                }
+                check(running.get() && scoConnected.get()) {
+                    "Bluetooth SCO audio did not connect within 8 seconds"
+                }
+                if (!active.setPreferredDevice(target)) {
+                    error("Bluetooth SCO microphone preference rejected")
+                }
+            }
             activeRecord = active
 
             // Inspect the actual AudioRecord session rather than inferring
@@ -105,8 +160,20 @@ class AndroidSessionCapture(
                 error("AudioRecord did not enter RECORDSTATE_RECORDING")
             }
 
+            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                val deadline = SystemClock.elapsedRealtime() + 5_000L
+                while (running.get() && SystemClock.elapsedRealtime() < deadline &&
+                    active.routedDevice?.id != requestedInputDeviceId) {
+                    Thread.sleep(100)
+                }
+                check(active.routedDevice?.id == requestedInputDeviceId &&
+                    active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+                    "Bluetooth SCO route not confirmed; capture refused"
+                }
+            }
             startedAtElapsedRealtime = SystemClock.elapsedRealtime()
             val rate = active.sampleRate
+            val filter = StreamingFrequencyWeighting(frequencyWeighting, rate)
             val intervalSamples = maxOf(1, rate / 10)
             val buffer = ShortArray(maxOf(1024, intervalSamples))
             var expectedRouteId = active.routedDevice?.id
@@ -115,6 +182,8 @@ class AndroidSessionCapture(
                 source = sourceName(active.audioSource),
                 sampleRateHz = rate,
                 inputIdentity = expectedRouteIdentity,
+                inputRouteKind = routeKind(active.routedDevice),
+                inputDeviceName = active.routedDevice?.productName?.toString().orEmpty(),
                 processingState = preprocessorAudit.description,
             )
             onStarted(configuration)
@@ -138,6 +207,7 @@ class AndroidSessionCapture(
                 if (intervalSampleCount <= 0) return
 
                 val meanSquare = intervalSumSquares / intervalSampleCount
+                val weightedMeanSquare = weightedSumSquares / intervalSampleCount
                 val rms = MeasurementMath.rmsFromMeanSquare(meanSquare)
                 val rmsDbfs = MeasurementMath.dbfsFromMeanSquare(meanSquare)
                 val peakDbfs =
@@ -168,6 +238,8 @@ class AndroidSessionCapture(
                         timingQuality = timingQuality(active),
                         clippedSampleCount = intervalClipped,
                         qualityFlags = qualityFlags,
+                        weightedMeanSquareFs = weightedMeanSquare,
+                        weightedRmsDbfs = MeasurementMath.dbfsFromMeanSquare(weightedMeanSquare),
                     ),
                 )
 
@@ -175,6 +247,7 @@ class AndroidSessionCapture(
                 intervalStartSample += intervalSampleCount
                 intervalSampleCount = 0
                 intervalSumSquares = 0.0
+                weightedSumSquares = 0.0
                 intervalPeak = 0.0
                 intervalClipped = 0
             }
@@ -187,6 +260,19 @@ class AndroidSessionCapture(
                 }
                 if (read == 0) continue
 
+                if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                    capturedSamples += read
+                    if (!nonzeroSamplesObserved) {
+                        nonzeroSamplesObserved = (0 until read).any { buffer[it] != 0.toShort() }
+                    }
+                    if (!nonzeroSamplesObserved && capturedSamples >= active.sampleRate * 5L) {
+                        error(
+                            "Bluetooth capture produced only digital-zero samples for 5 seconds; " +
+                                "audio signal not verified (transport failure or muted/silent source)"
+                        )
+                    }
+                }
+
                 // A Phase 1 session has one fixed input configuration.
                 // Reject a detected route change before consuming the newly read block.
                 ensureRouteUnchanged()
@@ -195,6 +281,8 @@ class AndroidSessionCapture(
                     val raw = buffer[index]
                     val normalized = raw.toDouble() / 32768.0
                     intervalSumSquares += normalized * normalized
+                    val weighted = filter.process(normalized)
+                    weightedSumSquares += weighted * weighted
                     intervalPeak = maxOf(intervalPeak, abs(normalized))
                     if (raw == Short.MIN_VALUE || raw == Short.MAX_VALUE) {
                         intervalClipped += 1
@@ -227,6 +315,8 @@ class AndroidSessionCapture(
             }
             runCatching { preprocessorAudit?.close() }
             runCatching { record?.release() }
+            scoReceiver?.let { runCatching { appContext.unregisterReceiver(it) } }
+            if (scoStarted) runCatching { audioManager.stopBluetoothSco() }
         }
     }
 
@@ -294,6 +384,18 @@ class AndroidSessionCapture(
         if (device == null) return "No routed device reported"
         return "type=" + device.type + " · " + device.productName
     }
+
+    private fun routeKind(device: AudioDeviceInfo?): InputRouteKind =
+        when (device?.type) {
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> InputRouteKind.BUILT_IN
+            AudioDeviceInfo.TYPE_WIRED_HEADSET -> InputRouteKind.WIRED
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            AudioDeviceInfo.TYPE_USB_HEADSET -> InputRouteKind.USB
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> InputRouteKind.BLUETOOTH
+            null -> InputRouteKind.UNKNOWN
+            else -> InputRouteKind.OTHER
+        }
 
     private class CapturePreprocessorAudit private constructor(
         private val agc: AutomaticGainControl?,

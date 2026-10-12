@@ -2,6 +2,12 @@
 package io.github.dante_souza.cuicatl.persistence
 
 import android.content.Context
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.InputRouteKind
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
+import io.github.dante_souza.cuicatl.domain.CalibrationSessionSnapshot
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationEvidenceState
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementFrame
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
@@ -59,9 +65,30 @@ class SessionRepository(context: Context) {
             setProperty(KEY_SOURCE, session.source)
             setProperty(KEY_SAMPLE_RATE_HZ, session.sampleRateHz.toString())
             setProperty(KEY_INPUT_IDENTITY, session.inputIdentity)
+            setProperty(KEY_INPUT_SELECTION_MODE, session.inputSelectionMode.name)
+            setProperty(KEY_INPUT_ROUTE_KIND, session.inputRouteKind.name)
+            setProperty(KEY_INPUT_DEVICE_NAME, session.inputDeviceName)
             session.agcRequest?.let { setProperty(KEY_AGC_REQUEST, it.name) }
             setProperty(KEY_PROCESSING_STATE, session.processingState)
+            setProperty(KEY_FREQUENCY_WEIGHTING, session.frequencyWeighting.name)
             setProperty(KEY_SAMPLE_FORMAT, SAMPLE_FORMAT)
+            session.calibrationSnapshot?.let { snapshot ->
+                setProperty(KEY_CALIBRATION_PROFILE_ID, snapshot.profileId)
+                setProperty(KEY_CALIBRATION_PROFILE_VERSION, snapshot.profileVersion.toString())
+                setProperty(KEY_CALIBRATION_EVIDENCE_STATE, snapshot.evidenceState.name)
+                setProperty(KEY_CALIBRATION_REFERENCE_METHOD, snapshot.referenceMethod.name)
+                setProperty(
+                    KEY_CALIBRATION_REFERENCE_LEVEL_DB_SPL,
+                    snapshot.referenceLevelDbSpl.toString(),
+                )
+                setProperty(
+                    KEY_CALIBRATION_REFERENCE_CORRECTION_DB,
+                    snapshot.referenceCorrectionDb.toString(),
+                )
+                snapshot.validatedAtUtcEpochMillis?.let {
+                    setProperty(KEY_CALIBRATION_VALIDATED_AT_UTC_MS, it.toString())
+                }
+            }
             setProperty(KEY_FRAME_COUNT, "0")
             setProperty(KEY_CAPTURED_MS, "0")
             setProperty(KEY_ELAPSED_MS, "0")
@@ -101,6 +128,29 @@ class SessionRepository(context: Context) {
         )
     }
 
+    fun deleteSavedSession(sessionId: String): Boolean {
+        val directory = sessionDirectory(sessionId)
+        val metadata = readMetadata(directory) ?: return false
+        if (metadata.getProperty(KEY_STATE) != SessionState.SAVED.name) return false
+        return directory.deleteRecursively()
+    }
+
+    fun deleteAllSavedSessions(): Int {
+        var deleted = 0
+        sessionsRoot.listFiles()
+            ?.filter { it.isDirectory }
+            ?.forEach { directory ->
+                val metadata = readMetadata(directory) ?: return@forEach
+                if (
+                    metadata.getProperty(KEY_STATE) == SessionState.SAVED.name &&
+                    directory.deleteRecursively()
+                ) {
+                    deleted += 1
+                }
+            }
+        return deleted
+    }
+
     private fun sessionDirectory(sessionId: String): File =
         File(sessionsRoot, sessionId)
 
@@ -118,7 +168,7 @@ class SessionRepository(context: Context) {
         val target = File(directory, METADATA_FILE)
         val temporary = File(directory, METADATA_TEMP_FILE)
         FileOutputStream(temporary).use { output ->
-            properties.store(output, "Cuicatl Phase 1 session metadata")
+            properties.store(output, "Cuicatl session metadata")
             output.fd.sync()
         }
         check(temporary.renameTo(target) || copyReplacing(temporary, target)) {
@@ -149,7 +199,7 @@ class SessionRepository(context: Context) {
 
     private fun parseFrameLine(line: String): MeasurementFrame? {
         val fields = line.split('\t')
-        if (fields.size != FRAME_FIELD_COUNT) return null
+        if (fields.size != FRAME_FIELD_COUNT && fields.size != FRAME_FIELD_COUNT + 2) return null
 
         return runCatching {
             MeasurementFrame(
@@ -167,6 +217,8 @@ class SessionRepository(context: Context) {
                 signalState = SignalState.valueOf(fields[11]),
                 timingQuality = TimingQuality.valueOf(fields[12]),
                 clippedSampleCount = fields[13].toInt(),
+                weightedMeanSquareFs = fields.getOrNull(15)?.takeIf { it.isNotEmpty() }?.toDouble(),
+                weightedRmsDbfs = fields.getOrNull(16)?.takeIf { it.isNotEmpty() }?.toDouble(),
                 qualityFlags = fields[14]
                     .takeIf { it.isNotBlank() }
                     ?.split('|')
@@ -192,13 +244,62 @@ class SessionRepository(context: Context) {
             source = metadata.getProperty(KEY_SOURCE).orEmpty(),
             sampleRateHz = metadata.getProperty(KEY_SAMPLE_RATE_HZ, "0").toInt(),
             inputIdentity = metadata.getProperty(KEY_INPUT_IDENTITY).orEmpty(),
+            inputSelectionMode =
+                metadata.getProperty(KEY_INPUT_SELECTION_MODE)
+                    ?.let { runCatching { InputSelectionMode.valueOf(it) }.getOrNull() }
+                    ?: InputSelectionMode.AUTO,
+            inputRouteKind =
+                metadata.getProperty(KEY_INPUT_ROUTE_KIND)
+                    ?.let { runCatching { InputRouteKind.valueOf(it) }.getOrNull() }
+                    ?: InputRouteKind.UNKNOWN,
+            inputDeviceName = metadata.getProperty(KEY_INPUT_DEVICE_NAME).orEmpty(),
             agcRequest = metadata.getProperty(KEY_AGC_REQUEST)
                 ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() },
             processingState = metadata.getProperty(KEY_PROCESSING_STATE).orEmpty(),
             frameCount = metadata.getProperty(KEY_FRAME_COUNT, "0").toLong(),
+            frequencyWeighting = metadata.getProperty(KEY_FREQUENCY_WEIGHTING)
+                ?.let { runCatching { FrequencyWeighting.valueOf(it) }.getOrNull() }
+                ?: FrequencyWeighting.Z,
             interruptionReason = metadata.getProperty(KEY_INTERRUPTION_REASON)
                 ?.takeIf { it.isNotBlank() },
+            calibrationSnapshot = calibrationSnapshotFromMetadata(metadata),
         )
+
+    private fun calibrationSnapshotFromMetadata(
+        metadata: Properties,
+    ): CalibrationSessionSnapshot? {
+        val profileId =
+            metadata.getProperty(KEY_CALIBRATION_PROFILE_ID)
+                ?.takeIf { it.isNotBlank() }
+                ?: return null
+        return runCatching {
+            CalibrationSessionSnapshot(
+                profileId = profileId,
+                profileVersion =
+                    metadata.getProperty(KEY_CALIBRATION_PROFILE_VERSION).toInt(),
+                evidenceState =
+                    RootlessCalibrationEvidenceState.valueOf(
+                        metadata.getProperty(KEY_CALIBRATION_EVIDENCE_STATE),
+                    ),
+                referenceMethod =
+                    RootlessReferenceMethod.valueOf(
+                        metadata.getProperty(KEY_CALIBRATION_REFERENCE_METHOD),
+                    ),
+                referenceLevelDbSpl =
+                    metadata.getProperty(
+                        KEY_CALIBRATION_REFERENCE_LEVEL_DB_SPL,
+                    ).toDouble(),
+                referenceCorrectionDb =
+                    metadata.getProperty(
+                        KEY_CALIBRATION_REFERENCE_CORRECTION_DB,
+                    ).toDouble(),
+                validatedAtUtcEpochMillis =
+                    metadata.getProperty(
+                        KEY_CALIBRATION_VALIDATED_AT_UTC_MS,
+                    )?.toLongOrNull(),
+            )
+        }.getOrNull()
+    }
 
     inner class ActiveWriter internal constructor(
         private val directory: File,
@@ -228,6 +329,8 @@ class SessionRepository(context: Context) {
                 frame.timingQuality.name,
                 frame.clippedSampleCount.toString(),
                 frame.qualityFlags.joinToString("|") { it.name },
+                frame.weightedMeanSquareFs?.toString().orEmpty(),
+                frame.weightedRmsDbfs?.toString().orEmpty(),
             ).joinToString("\t")
 
             output.write((line + "\n").toByteArray(Charsets.UTF_8))
@@ -292,7 +395,8 @@ class SessionRepository(context: Context) {
         const val FRAME_HEADER =
             "session_id\tsequence\telapsed_start_ms\tduration_ms\tsample_rate_hz\tsample_count\t" +
                 "mean_square_fs\trms_fs\tsample_peak_fs\trms_dbfs\tsample_peak_dbfs\t" +
-                "signal_state\ttiming_quality\tclipped_sample_count\tquality_flags"
+                "signal_state\ttiming_quality\tclipped_sample_count\tquality_flags\t" +
+                "weighted_mean_square_fs\tweighted_rms_dbfs"
 
         const val KEY_ID = "id"
         const val KEY_LABEL = "label"
@@ -303,12 +407,26 @@ class SessionRepository(context: Context) {
         const val KEY_SOURCE = "source"
         const val KEY_SAMPLE_RATE_HZ = "sample_rate_hz"
         const val KEY_INPUT_IDENTITY = "input_identity"
+        const val KEY_INPUT_SELECTION_MODE = "input_selection_mode"
+        const val KEY_INPUT_ROUTE_KIND = "input_route_kind"
+        const val KEY_INPUT_DEVICE_NAME = "input_device_name"
         const val KEY_AGC_REQUEST = "agc_request"
         const val KEY_PROCESSING_STATE = "processing_state"
+        const val KEY_FREQUENCY_WEIGHTING = "frequency_weighting"
         const val KEY_SAMPLE_FORMAT = "sample_format"
         const val KEY_FRAME_COUNT = "frame_count"
         const val KEY_CAPTURED_MS = "captured_ms"
         const val KEY_ELAPSED_MS = "elapsed_ms"
         const val KEY_INTERRUPTION_REASON = "interruption_reason"
+        const val KEY_CALIBRATION_PROFILE_ID = "calibration_profile_id"
+        const val KEY_CALIBRATION_PROFILE_VERSION = "calibration_profile_version"
+        const val KEY_CALIBRATION_EVIDENCE_STATE = "calibration_evidence_state"
+        const val KEY_CALIBRATION_REFERENCE_METHOD = "calibration_reference_method"
+        const val KEY_CALIBRATION_REFERENCE_LEVEL_DB_SPL =
+            "calibration_reference_level_db_spl"
+        const val KEY_CALIBRATION_REFERENCE_CORRECTION_DB =
+            "calibration_reference_correction_db"
+        const val KEY_CALIBRATION_VALIDATED_AT_UTC_MS =
+            "calibration_validated_at_utc_ms"
     }
 }

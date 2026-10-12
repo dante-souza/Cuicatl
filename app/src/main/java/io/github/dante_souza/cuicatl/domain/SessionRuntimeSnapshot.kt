@@ -6,6 +6,7 @@ data class SessionRuntimeSnapshot(
     val activeSession: MeasurementSession? = null,
     val currentFrame: MeasurementFrame? = null,
     val history: List<MeasurementFrame> = emptyList(),
+    val levelStatistics: LevelStatistics? = null,
     val clippedFrameCount: Long = 0L,
     val clippedSampleCount: Long = 0L,
     val message: String = "Ready. Microphone capture starts only after Start.",

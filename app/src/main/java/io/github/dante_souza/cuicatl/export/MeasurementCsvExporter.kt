@@ -11,6 +11,28 @@ import java.time.format.DateTimeFormatter
 class MeasurementCsvExporter(
     private val context: Context,
 ) {
+    fun deleteCachedExports(sessionId: String): Int {
+        val exportDirectory = File(context.cacheDir, "exports")
+        if (!exportDirectory.isDirectory) return 0
+        return exportDirectory.listFiles()
+            ?.filter { it.isFile && it.extension == "csv" }
+            ?.count { file ->
+                val matches = file.name == sessionId + ".csv" ||
+                    file.name.endsWith("-" + sessionId + ".csv")
+                matches && file.delete()
+            }
+            ?: 0
+    }
+
+    fun clearCachedExports(): Int {
+        val exportDirectory = File(context.cacheDir, "exports")
+        if (!exportDirectory.isDirectory) return 0
+        return exportDirectory.listFiles()
+            ?.filter { it.isFile && it.extension == "csv" }
+            ?.count { it.delete() }
+            ?: 0
+    }
+
     fun export(detail: SavedSessionDetail): File {
         val exportDirectory = File(context.cacheDir, "exports").apply { mkdirs() }
         val safeLabel = detail.session.label

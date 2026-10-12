@@ -1,0 +1,2 @@
+﻿tinymix_present
+/system/bin/tinymix

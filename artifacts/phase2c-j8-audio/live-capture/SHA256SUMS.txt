@@ -1,0 +1,14 @@
+
+Algorithm Hash                                                             Path                                                                                              
+--------- ----                                                             ----                                                                                              
+SHA256    32FF9185042F9BA7D3F9FB6A52859ED8B118F78A92219B5849067DF1B88CC043 M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\asound-cards-live.txt         
+SHA256    6FB47C511B89C6552946A333568872A8B31E700AA02DCED7FE6C16071E270377 M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\asound-pcm-live.txt           
+SHA256    9B95F6ADE9ECB0B076457BE7B405419CE56D59B2EE3CF61708CC56475230DCA2 M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\audio-flinger-live.txt        
+SHA256    95455890213B15DCDBAF042BF335DC19B978009000996760A7A5D20D4DB8EEE8 M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\audio-platform-info.xml       
+SHA256    9BFB7A436F48FB7B140A1FC52586D13C114F7E28FA0E53015F621D8710A68526 M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\audio-policy-configuration.xml
+SHA256    9D20CAEF3E3B966EABE1E530E80A8E864EF3BDB9EDA323D0BB589405D7C5AA17 M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\audio-policy-live.txt         
+SHA256    4E9F2E6ADD6D3976366878DC65A9E8156790CAC1505563B3C1FF5F5EE27ADBDA M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\getprop-live.txt              
+SHA256    BC7E02D950A420BA12FF1EF24A4EB33775B9BF49E536CB335DBB921BA0A281FA M:\ATOL\GitProjects\Cuicatl\artifacts\phase2c-j8-audio\live-capture\mixer-paths.xml               
+
+
+

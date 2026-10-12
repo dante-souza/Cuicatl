@@ -8,14 +8,26 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import android.os.Handler
 import android.os.SystemClock
 import io.github.dante_souza.cuicatl.MainActivity
 import io.github.dante_souza.cuicatl.R
+import io.github.dante_souza.cuicatl.domain.InputSelectionMode
+import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
+import io.github.dante_souza.cuicatl.domain.LevelStatisticsAccumulator
 import io.github.dante_souza.cuicatl.domain.AgcRequest
 import io.github.dante_souza.cuicatl.domain.MeasurementSession
+import io.github.dante_souza.cuicatl.domain.MeasurementInputConfiguration
+import io.github.dante_souza.cuicatl.domain.ReferenceAdjustment
+import io.github.dante_souza.cuicatl.domain.ReferenceAdjustmentFactory
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationProfile
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationStatus
+import io.github.dante_souza.cuicatl.domain.RootlessCalibrationVerification
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceMethod
+import io.github.dante_souza.cuicatl.domain.RootlessReferenceProcedure
 import io.github.dante_souza.cuicatl.domain.SavedSessionDetail
 import io.github.dante_souza.cuicatl.domain.SessionCommandPolicy
 import io.github.dante_souza.cuicatl.domain.SessionOutcome
@@ -23,6 +35,8 @@ import io.github.dante_souza.cuicatl.domain.SessionRuntimeSnapshot
 import io.github.dante_souza.cuicatl.domain.SessionState
 import io.github.dante_souza.cuicatl.export.MeasurementCsvExporter
 import io.github.dante_souza.cuicatl.persistence.SessionRepository
+import io.github.dante_souza.cuicatl.persistence.ReferenceAdjustmentRepository
+import io.github.dante_souza.cuicatl.persistence.RootlessCalibrationRepository
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -37,6 +51,8 @@ class MeasurementService : Service() {
 
     private lateinit var repository: SessionRepository
     private lateinit var exporter: MeasurementCsvExporter
+    private lateinit var referenceRepository: ReferenceAdjustmentRepository
+    private lateinit var calibrationRepository: RootlessCalibrationRepository
 
     @Volatile
     private var runtimeSnapshot = SessionRuntimeSnapshot()
@@ -54,6 +70,8 @@ class MeasurementService : Service() {
     private var activeStartedElapsedRealtime = 0L
 
     @Volatile
+    private var levelAccumulator = LevelStatisticsAccumulator()
+
     private var clippedFrameCount = 0L
 
     @Volatile
@@ -63,6 +81,11 @@ class MeasurementService : Service() {
         super.onCreate()
         repository = SessionRepository(this)
         exporter = MeasurementCsvExporter(this)
+        referenceRepository = ReferenceAdjustmentRepository(this)
+        calibrationRepository = RootlessCalibrationRepository(this)
+        runCatching {
+            calibrationRepository.migrateLegacyActiveAdjustment(referenceRepository)
+        }
         val recovered = repository.recoverInterruptedSessions()
         if (recovered > 0) {
             runtimeSnapshot = SessionRuntimeSnapshot(
@@ -82,7 +105,14 @@ class MeasurementService : Service() {
                 val agcRequest = intent.getStringExtra(EXTRA_AGC_REQUEST)
                     ?.let { runCatching { AgcRequest.valueOf(it) }.getOrNull() }
                     ?: AgcRequest.DEFAULT
-                startMeasurement(label, agcRequest)
+                val weighting = intent.getStringExtra(EXTRA_FREQUENCY_WEIGHTING)
+                    ?.let { runCatching { FrequencyWeighting.valueOf(it) }.getOrNull() }
+                    ?: FrequencyWeighting.Z
+                val selectionMode = intent.getStringExtra(EXTRA_INPUT_SELECTION_MODE)
+                    ?.let { runCatching { InputSelectionMode.valueOf(it) }.getOrNull() }
+                    ?: InputSelectionMode.AUTO
+                val inputDeviceId = intent.getIntExtra(EXTRA_INPUT_DEVICE_ID, -1)
+                startMeasurement(label, agcRequest, weighting, selectionMode, inputDeviceId)
             }
 
             ACTION_STOP -> stopMeasurement()
@@ -118,9 +148,246 @@ class MeasurementService : Service() {
     fun exportSavedSession(sessionId: String): File? =
         repository.loadSession(sessionId)?.let(exporter::export)
 
+    fun activeReferenceAdjustment(): ReferenceAdjustment? =
+        calibrationRepository.loadActive()?.adjustment
+            ?: referenceRepository.loadActive()
+
+    fun activeRootlessCalibrationProfile(): RootlessCalibrationProfile? =
+        calibrationRepository.loadActive()
+
+    fun createReferenceAdjustment(
+        sessionId: String,
+        referenceLevelDbSpl: Double,
+        referenceMethod: String,
+        notes: String,
+    ): String? {
+        val detail = repository.loadSession(sessionId) ?: return "Saved session could not be loaded."
+        val candidate = ReferenceAdjustmentFactory.fromSavedSession(
+            detail = detail,
+            deviceModel = Build.MODEL,
+            referenceLevelDbSpl = referenceLevelDbSpl,
+            referenceMethod = referenceMethod,
+            createdAtUtcEpochMillis = System.currentTimeMillis(),
+            notes = notes,
+        )
+        val adjustment =
+            candidate.adjustment
+                ?: return candidate.rejectionReason
+                    ?: "Reference adjustment rejected."
+
+        return runCatching {
+            calibrationRepository.saveDraftFromAdjustment(
+                adjustment = adjustment,
+                sourceSessionId = sessionId,
+            )
+            referenceRepository.clearActive()
+            null
+        }.getOrElse { error ->
+            "Could not persist draft calibration profile: " +
+                (error.message ?: error::class.java.simpleName)
+        }
+    }
+
+    fun createRootlessCalibrationDraft(
+        sessionId: String,
+        method: RootlessReferenceMethod,
+        equipmentDescription: String,
+        equipmentIdentifier: String,
+        referenceLevelDbSpl: Double,
+        referenceFrequencyHz: Double?,
+        referenceUncertaintyDb: Double?,
+        physicalReferenceConfirmed: Boolean,
+        geometry: String,
+        environmentNotes: String,
+        procedureNotes: String,
+    ): String? {
+        if (equipmentDescription.isBlank()) {
+            return "Reference equipment/source description is required."
+        }
+        if (geometry.isBlank()) {
+            return "Reference geometry/coupling is required."
+        }
+        if (!physicalReferenceConfirmed) {
+            return "Confirm that the physical reference was actually present for this session."
+        }
+
+        val procedure =
+            runCatching {
+                RootlessReferenceProcedure(
+                    method = method,
+                    equipmentDescription = equipmentDescription.trim(),
+                    equipmentIdentifier = equipmentIdentifier.trim(),
+                    referenceLevelDbSpl = referenceLevelDbSpl,
+                    referenceFrequencyHz = referenceFrequencyHz,
+                    referenceUncertaintyDb = referenceUncertaintyDb,
+                    physicalReferenceConfirmed = physicalReferenceConfirmed,
+                    geometry = geometry.trim(),
+                    environmentNotes = environmentNotes.trim(),
+                    procedureNotes = procedureNotes.trim(),
+                )
+            }.getOrElse { error ->
+                return error.message ?: "Reference procedure is invalid."
+            }
+
+        val detail =
+            repository.loadSession(sessionId)
+                ?: return "Saved session could not be loaded."
+        val adjustmentMethod =
+            method.name + " · " + equipmentDescription.trim()
+        val candidate = ReferenceAdjustmentFactory.fromSavedSession(
+            detail = detail,
+            deviceModel = Build.MODEL,
+            referenceLevelDbSpl = referenceLevelDbSpl,
+            referenceMethod = adjustmentMethod,
+            createdAtUtcEpochMillis = System.currentTimeMillis(),
+            notes = procedureNotes.trim(),
+        )
+        val adjustment =
+            candidate.adjustment
+                ?: return candidate.rejectionReason
+                    ?: "Reference session was rejected."
+
+        return runCatching {
+            calibrationRepository.saveDraft(
+                adjustment = adjustment,
+                sourceSessionId = sessionId,
+                procedure = procedure,
+            )
+            referenceRepository.clearActive()
+            null
+        }.getOrElse { error ->
+            "Could not persist calibration draft: " +
+                (error.message ?: error::class.java.simpleName)
+        }
+    }
+
+    fun verifyActiveRootlessCalibration(
+        verificationSessionId: String,
+        maximumAllowedDriftDb: Double,
+        sameReferenceConditionsConfirmed: Boolean,
+        notes: String,
+    ): String? {
+        val active =
+            calibrationRepository.loadActive()
+                ?: return "No active calibration draft."
+        if (active.status == RootlessCalibrationStatus.VALIDATED) {
+            return "The active calibration profile is already validated."
+        }
+        if (verificationSessionId == active.sourceSessionId) {
+            return "Verification requires a second saved measurement session."
+        }
+        if (!maximumAllowedDriftDb.isFinite() || maximumAllowedDriftDb < 0.0) {
+            return "Maximum allowed drift must be a non-negative number."
+        }
+        if (!sameReferenceConditionsConfirmed) {
+            return "Confirm that the same physical reference, geometry and conditions were repeated."
+        }
+
+        val detail =
+            repository.loadSession(verificationSessionId)
+                ?: return "Verification session could not be loaded."
+        val candidate = ReferenceAdjustmentFactory.fromSavedSession(
+            detail = detail,
+            deviceModel = Build.MODEL,
+            referenceLevelDbSpl = active.adjustment.referenceLevelDbSpl,
+            referenceMethod = active.adjustment.referenceMethod,
+            createdAtUtcEpochMillis = System.currentTimeMillis(),
+            notes = notes.trim(),
+        )
+        val observation =
+            candidate.adjustment
+                ?: return candidate.rejectionReason
+                    ?: "Verification session was rejected."
+
+        val configuration = MeasurementInputConfiguration(
+            deviceModel = observation.deviceModel,
+            inputIdentity = observation.inputIdentity,
+            audioSource = observation.audioSource,
+            sampleRateHz = observation.sampleRateHz,
+            sampleFormat = observation.sampleFormat,
+            frequencyWeighting = observation.frequencyWeighting,
+        )
+        val mismatches = active.adjustment.mismatches(configuration)
+        if (mismatches.isNotEmpty()) {
+            return "Verification session profile mismatch: " +
+                mismatches.joinToString(", ") {
+                    it.name.lowercase().replace('_', ' ')
+                }
+        }
+
+        val observedAtUtcEpochMillis = System.currentTimeMillis()
+        val verification =
+            runCatching {
+                RootlessCalibrationVerification(
+                    beforeMeasuredLevelDbfs =
+                        active.adjustment.measuredReferenceLevelDbfs,
+                    afterMeasuredLevelDbfs =
+                        observation.measuredReferenceLevelDbfs,
+                    maximumAllowedDriftDb = maximumAllowedDriftDb,
+                    observationCount = 2,
+                    verificationSessionId = verificationSessionId,
+                    observedAtUtcEpochMillis = observedAtUtcEpochMillis,
+                    sameReferenceConditionsConfirmed = sameReferenceConditionsConfirmed,
+                    notes = notes.trim(),
+                )
+            }.getOrElse { error ->
+                return error.message ?: "Verification evidence is invalid."
+            }
+
+        val revised =
+            runCatching {
+                calibrationRepository.recordActiveVerification(
+                    verification = verification,
+                    observedAtUtcEpochMillis = observedAtUtcEpochMillis,
+                )
+            }.getOrElse { error ->
+                return "Could not persist verification result: " +
+                    (error.message ?: error::class.java.simpleName)
+            }
+
+        return if (revised.status == RootlessCalibrationStatus.VALIDATED) {
+            null
+        } else {
+            "Verification failed: observed drift " +
+                String.format(java.util.Locale.US, "%.2f dB", verification.observedDriftDb) +
+                " exceeds allowed " +
+                String.format(java.util.Locale.US, "%.2f dB", maximumAllowedDriftDb) +
+                ". Draft retained with failed evidence."
+        }
+    }
+
+    fun clearReferenceAdjustment() {
+        calibrationRepository.clearActive()
+        referenceRepository.clearActive()
+    }
+
+    fun deleteSavedSession(sessionId: String): Boolean {
+        val deleted = repository.deleteSavedSession(sessionId)
+        if (!deleted) return false
+
+        exporter.deleteCachedExports(sessionId)
+        calibrationRepository.deleteProfilesFromSourceSession(sessionId)
+        val activeReference = referenceRepository.loadActive()
+        if (activeReference?.id == "ref-" + sessionId) {
+            referenceRepository.clearActive()
+        }
+        return true
+    }
+
+    fun sanitizeSavedSessions(): Int {
+        val deleted = repository.deleteAllSavedSessions()
+        exporter.clearCachedExports()
+        calibrationRepository.clearAll()
+        referenceRepository.clearActive()
+        return deleted
+    }
+
     private fun startMeasurement(
         label: String,
         agcRequest: AgcRequest,
+        frequencyWeighting: FrequencyWeighting,
+        inputSelectionMode: InputSelectionMode,
+        inputDeviceId: Int,
     ) {
         if (!SessionCommandPolicy.acceptsStart(runtimeSnapshot.status)) {
             return
@@ -139,9 +406,12 @@ class MeasurementService : Service() {
             startedAtUtcEpochMillis = startedAtUtcEpochMillis,
             timezoneOffset = timezoneOffset,
             agcRequest = agcRequest,
+            frequencyWeighting = frequencyWeighting,
+            inputSelectionMode = inputSelectionMode,
         )
         activeSession = startingSession
         activeStartedElapsedRealtime = SystemClock.elapsedRealtime()
+        levelAccumulator = LevelStatisticsAccumulator()
         clippedFrameCount = 0L
         clippedSampleCount = 0L
         publish(
@@ -161,13 +431,31 @@ class MeasurementService : Service() {
             context = this,
             sessionId = sessionId,
             agcRequest = agcRequest,
+            frequencyWeighting = frequencyWeighting,
+            inputSelectionMode = inputSelectionMode,
+            requestedInputDeviceId = inputDeviceId,
             onStarted = { configuration ->
+                val inputConfiguration = MeasurementInputConfiguration(
+                    deviceModel = Build.MODEL,
+                    inputIdentity = configuration.inputIdentity,
+                    audioSource = configuration.source,
+                    sampleRateHz = configuration.sampleRateHz,
+                    sampleFormat = SAMPLE_FORMAT,
+                    frequencyWeighting = frequencyWeighting,
+                )
+                val calibrationSnapshot =
+                    calibrationRepository.loadActive()
+                        ?.sessionSnapshot(inputConfiguration)
+
                 val runningSession = startingSession.copy(
                     state = SessionState.RUNNING,
                     source = configuration.source,
                     sampleRateHz = configuration.sampleRateHz,
                     inputIdentity = configuration.inputIdentity,
+                    inputRouteKind = configuration.inputRouteKind,
+                    inputDeviceName = configuration.inputDeviceName,
                     processingState = configuration.processingState,
+                    calibrationSnapshot = calibrationSnapshot,
                 )
                 writer = repository.beginSession(runningSession)
                 activeSession = runningSession
@@ -183,6 +471,10 @@ class MeasurementService : Service() {
             onFrame = { frame ->
                 val activeWriter = writer ?: error("Session writer was not initialized")
                 activeWriter.append(frame)
+                levelAccumulator.addInterval(
+                    frame.weightedMeanSquareFs ?: frame.meanSquareFs,
+                    frame.durationMillis,
+                )
 
                 val elapsed = SystemClock.elapsedRealtime() - activeStartedElapsedRealtime
                 val captured = frame.elapsedStartMillis + frame.durationMillis
@@ -207,6 +499,7 @@ class MeasurementService : Service() {
                         activeSession = updatedSession,
                         currentFrame = frame,
                         history = history,
+                        levelStatistics = levelAccumulator.snapshot(),
                         clippedFrameCount = clippedFrameCount,
                         clippedSampleCount = clippedSampleCount,
                         message = "Measurement running. Values are digital dBFS, not SPL.",
@@ -364,10 +657,14 @@ class MeasurementService : Service() {
         const val ACTION_STOP = "io.github.dante_souza.cuicatl.action.STOP_MEASUREMENT"
         const val EXTRA_LABEL = "session_label"
         const val EXTRA_AGC_REQUEST = "agc_request"
+        const val EXTRA_FREQUENCY_WEIGHTING = "frequency_weighting"
+        const val EXTRA_INPUT_SELECTION_MODE = "input_selection_mode"
+        const val EXTRA_INPUT_DEVICE_ID = "input_device_id"
 
         private const val CHANNEL_ID = "cuicatl_measurement"
         private const val NOTIFICATION_ID = 1001
         private const val MAX_LABEL_LENGTH = 120
+        private const val SAMPLE_FORMAT = "PCM16_MONO"
         private const val MAX_LIVE_HISTORY_FRAMES = 600
     }
 }
