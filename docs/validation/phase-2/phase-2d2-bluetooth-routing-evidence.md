@@ -55,11 +55,7 @@ One preceding Bluetooth trial returned **697/697 digital-zero frames** and there
 
 The two named CSV exports were supplied in the project conversation during J8 testing. **They are referenced here but are not committed to this repository by this freeze.** Their exact bytes, hashes, and metadata should be preserved outside this Markdown report; a source-identical archive is still required before claiming repository-level raw-evidence reproducibility.
 
-A SHA-256 digest documented for the first export is:
-
-```text
-5e441461996cc0097bd1fe4cddf6ec6a90dcedf10e673b29e4f77437ff147a26  bt_handshk1-923cbd17-5a88-410d-bd54-38fb1fc5127b.csv
-```
+The SHA-256 digests of the two CSVs have **not been independently verified in this repository freeze**; no digest is asserted here.
 
 The SHA-256 digest of `bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv` has **not been independently recovered here**; it must **not** be fabricated. Do not claim that the two raw CSV exports are independently available from this git tree.
 
