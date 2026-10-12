@@ -16,6 +16,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.SystemClock
+import io.github.dante_souza.cuicatl.domain.BluetoothScoRouteGate
 import io.github.dante_souza.cuicatl.domain.FrequencyWeighting
 import io.github.dante_souza.cuicatl.domain.InputRouteKind
 import io.github.dante_souza.cuicatl.domain.InputSelectionMode
@@ -90,7 +91,7 @@ class AndroidSessionCapture(
         val audioManager = appContext.getSystemService(AudioManager::class.java)
         var scoStarted = false
         var scoReceiver: BroadcastReceiver? = null
-        val scoConnected = AtomicBoolean(false)
+        var scoGate: BluetoothScoRouteGate? = null
         var sequence = 0L
         var intervalStartSample = 0L
         var intervalSampleCount = 0
@@ -100,6 +101,9 @@ class AndroidSessionCapture(
         var intervalClipped = 0
         var nonzeroSamplesObserved = false
         var capturedSamples = 0L
+        var sessionStarted = false
+        var terminalFailure: Throwable? = null
+        var terminalElapsedMillis = 0L
 
         try {
             val selection = openFirstSupportedRecord()
@@ -107,7 +111,11 @@ class AndroidSessionCapture(
 
             val active = selection.record
             record = active
+            activeRecord = active
+            check(running.get()) { "Capture stopped before recording started" }
             if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+                val gate = BluetoothScoRouteGate(requestedInputDeviceId)
+                scoGate = gate
                 val target = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == requestedInputDeviceId &&
                         it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
@@ -115,12 +123,23 @@ class AndroidSessionCapture(
                 val receiver = object : BroadcastReceiver() {
                     override fun onReceive(context: Context, intent: Intent) {
                         if (intent.action == AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED) {
-                            scoConnected.set(
-                                intent.getIntExtra(
-                                    AudioManager.EXTRA_SCO_AUDIO_STATE,
-                                    AudioManager.SCO_AUDIO_STATE_ERROR,
-                                ) == AudioManager.SCO_AUDIO_STATE_CONNECTED,
+                            val state = intent.getIntExtra(
+                                AudioManager.EXTRA_SCO_AUDIO_STATE,
+                                AudioManager.SCO_AUDIO_STATE_ERROR,
                             )
+                            when (state) {
+                                AudioManager.SCO_AUDIO_STATE_CONNECTED ->
+                                    gate.observeScoState(connected = true)
+                                AudioManager.SCO_AUDIO_STATE_DISCONNECTED,
+                                AudioManager.SCO_AUDIO_STATE_ERROR ->
+                                    gate.observeScoState(connected = false)
+                            }
+                            // READ_BLOCKING can otherwise outlive a lost SCO transport.
+                            // Do not set stopRequested: this is an interruption, not Stop.
+                            if (gate.isLost() &&
+                                active.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                                runCatching { active.stop() }
+                            }
                         }
                     }
                 }
@@ -129,21 +148,22 @@ class AndroidSessionCapture(
                     receiver,
                     IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED),
                 )
-                audioManager.startBluetoothSco()
+                check(running.get()) { "Capture stopped before Bluetooth SCO connection" }
+                // Mark ownership before invoking the platform, including its exception path.
                 scoStarted = true
+                audioManager.startBluetoothSco()
                 val scoDeadline = SystemClock.elapsedRealtime() + 8_000L
-                while (running.get() && !scoConnected.get() &&
+                while (running.get() && !gate.isConnected() && !gate.isLost() &&
                     SystemClock.elapsedRealtime() < scoDeadline) {
                     Thread.sleep(100)
                 }
-                check(running.get() && scoConnected.get()) {
-                    "Bluetooth SCO audio did not connect within 8 seconds"
-                }
+                gate.connectionFailureAfterWait(isRunning = running.get())
+                    ?.let { error(it) }
                 if (!active.setPreferredDevice(target)) {
                     error("Bluetooth SCO microphone preference rejected")
                 }
             }
-            activeRecord = active
+            check(running.get()) { "Capture stopped before recording started" }
 
             // Inspect the actual AudioRecord session rather than inferring
             // preprocessing from device-wide availability alone. If Android
@@ -160,17 +180,24 @@ class AndroidSessionCapture(
                 error("AudioRecord did not enter RECORDSTATE_RECORDING")
             }
 
-            if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
+            if (scoGate != null) {
+                val gate = checkNotNull(scoGate)
                 val deadline = SystemClock.elapsedRealtime() + 5_000L
-                while (running.get() && SystemClock.elapsedRealtime() < deadline &&
-                    active.routedDevice?.id != requestedInputDeviceId) {
+                while (running.get() && gate.isConnected() &&
+                    !gate.routeMatches(
+                        active.routedDevice?.id,
+                        active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    ) && SystemClock.elapsedRealtime() < deadline) {
                     Thread.sleep(100)
                 }
-                check(active.routedDevice?.id == requestedInputDeviceId &&
-                    active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
-                    "Bluetooth SCO route not confirmed; capture refused"
-                }
+                gate.routeConfirmationFailure(
+                    isRunning = running.get(),
+                    deviceId = active.routedDevice?.id,
+                    isBluetoothSco =
+                        active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                )?.let { error(it) }
             }
+            check(running.get()) { "Capture stopped before recording started" }
             startedAtElapsedRealtime = SystemClock.elapsedRealtime()
             val rate = active.sampleRate
             val filter = StreamingFrequencyWeighting(frequencyWeighting, rate)
@@ -178,6 +205,13 @@ class AndroidSessionCapture(
             val buffer = ShortArray(maxOf(1024, intervalSamples))
             var expectedRouteId = active.routedDevice?.id
             var expectedRouteIdentity = describeRoute(active.routedDevice)
+            scoGate?.let { gate ->
+                val device = active.routedDevice
+                gate.captureFailure(
+                    device?.id,
+                    device?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                )?.let { error(it) }
+            }
             val configuration = CaptureConfiguration(
                 source = sourceName(active.audioSource),
                 sampleRateHz = rate,
@@ -186,10 +220,20 @@ class AndroidSessionCapture(
                 inputDeviceName = active.routedDevice?.productName?.toString().orEmpty(),
                 processingState = preprocessorAudit.description,
             )
+            check(running.get()) { "Capture stopped before session confirmation" }
             onStarted(configuration)
+            sessionStarted = true
 
             fun ensureRouteUnchanged() {
-                val routedDevice = active.routedDevice ?: return
+                val routedDevice = active.routedDevice
+                scoGate?.let { gate ->
+                    gate.captureFailure(
+                        deviceId = routedDevice?.id,
+                        isBluetoothSco = routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    )?.let { error(it) }
+                    return
+                }
+                if (routedDevice == null) return
                 if (expectedRouteId == null) {
                     expectedRouteId = routedDevice.id
                     expectedRouteIdentity = describeRoute(routedDevice)
@@ -253,12 +297,18 @@ class AndroidSessionCapture(
             }
 
             while (running.get()) {
+                ensureRouteUnchanged()
                 val read = active.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
                 if (read < 0) {
                     if (!running.get() || stopRequested.get()) break
+                    ensureRouteUnchanged()
                     error("AudioRecord.read failed with code " + read)
                 }
-                if (read == 0) continue
+                if (read == 0) {
+                    ensureRouteUnchanged()
+                    continue
+                }
+                ensureRouteUnchanged()
 
                 if (inputSelectionMode == InputSelectionMode.BLUETOOTH_SCO) {
                     capturedSamples += read
@@ -273,10 +323,7 @@ class AndroidSessionCapture(
                     }
                 }
 
-                // A Phase 1 session has one fixed input configuration.
-                // Reject a detected route change before consuming the newly read block.
-                ensureRouteUnchanged()
-
+                // Reject route changes before consuming newly read PCM.
                 for (index in 0 until read) {
                     val raw = buffer[index]
                     val normalized = raw.toDouble() / 32768.0
@@ -299,15 +346,10 @@ class AndroidSessionCapture(
                 emitFrame()
             }
 
-            val elapsed = elapsedSinceStart()
-            onStopped(elapsed)
         } catch (error: Throwable) {
-            if (stopRequested.get()) {
-                onStopped(elapsedSinceStart())
-            } else {
-                onFailure(error, elapsedSinceStart())
-            }
+            terminalFailure = error
         } finally {
+            terminalElapsedMillis = elapsedSinceStart()
             running.set(false)
             activeRecord = null
             if (record != null && record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
@@ -317,6 +359,14 @@ class AndroidSessionCapture(
             runCatching { record?.release() }
             scoReceiver?.let { runCatching { appContext.unregisterReceiver(it) } }
             if (scoStarted) runCatching { audioManager.stopBluetoothSco() }
+        }
+        // The service can now publish READY and allow a new Start without
+        // overlapping with an old AudioRecord/SCO teardown.
+        val failure = terminalFailure
+        if (failure != null && (!stopRequested.get() || !sessionStarted)) {
+            onFailure(failure, terminalElapsedMillis)
+        } else {
+            onStopped(terminalElapsedMillis)
         }
     }
 

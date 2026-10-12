@@ -76,3 +76,40 @@ No calibrated SPL reference procedure was carried out. No waveform source-isolat
 Harden behavior under device disconnect, SCO drops, mute/zero transport, reconnect and competing audio; provide explicit, distinct failure reasons in Meter/History and CSV provenance where the schema permits. Add deterministic tests for state-machine decisions; revalidate on the J8 without requiring root. If physical source isolation is investigated further, use a controlled and time-annotated stimulus at each microphone, and keep the result separate from absolute calibration.
 
 **Release policy:** do not merge unverified measurement claims into the UX. Auto (built-in/wired) and explicit Bluetooth request must remain distinguishable, session configuration must stay fixed once started, and missing frames must never be invented.
+
+## Post-freeze custody addendum — 2026-10-12
+
+This **addendum does not change the frozen experimental conclusions** above.
+After recovering the local evidence-directory listing, the owner used
+PowerShell `Get-FileHash -Algorithm SHA256` on three CSV files under the
+separate Downloads `cuicatl_evidence` directory. These are **owner-reported
+cryptographic digests of local files**, not independent hashes of Git-tracked
+bytes. All three displayed hashes are complete (64 hexadecimal digits).
+
+| Filename | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `bt_handshk1-923cbd17-5a88-410d-bd54-38fb1fc5127b.csv` | 121030 | `5E441461996CC0097BD1FE4CDDF6EC6A90DCEDF10E673B29E4F77437FF147A26` |
+| `bt_recordin-eae07c33-7afd-40b1-a87a-1c71ecd2fcfa.csv` | 927757 | `BB56E2F477DB8B4FE95FBDC0E12FE86D7E5EA2353380328A092832F410382E46` |
+| `bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv` | 853855 | `FD5D5448908021DFCCFDA930BC3BBA94BC05E4BB3E033006882528B7A4CE7368` |
+
+The `bt_handshk1` digest exactly matches the previously verified local
+immutable-archive manifest entry. The `bt_test` file has now been **located
+on the owner's PC and hashed**, although it is absent from the original
+56-file preserved archive. The additional `bt_recordin` file has been
+located and hashed; its experimental outcome has **not** been inferred from
+its filename.
+
+The owner clarified that `bt_test` had been **sent by email**, and the
+Android app's **Sanitize saved sessions** operation removed saved app data
+and cached CSV exports. This operation does not itself rewrite an emailed
+or already downloaded CSV. Whether the Downloads file matches the email
+attachment byte-for-byte, or whether any field-level sanitization occurred,
+has not been established by the hash listing alone.
+
+No CSV bytes have yet been added to this Git repository. Privacy review and
+an approved archival/publishing decision are required before any raw or
+redacted derivative is committed. A redacted derivative, if produced, must
+have a **separate digest and documented transformation**.
+
+See [Phase 2D.3a evidence intake](phase-2d3a-evidence-intake.md) and
+[evidence custody issue #10](https://github.com/dante-souza/Cuicatl/issues/10).
