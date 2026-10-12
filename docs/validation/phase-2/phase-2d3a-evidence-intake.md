@@ -310,3 +310,38 @@ SHA-256 must be recorded separately if transformation is later necessary.
 
 The Phase 2D.3a Bluetooth-off disconnect **PASS** is unchanged. Separate Auto
 built-in and P3 regression sessions are still pending.
+
+## Full local hash checkpoint — 2026-10-12
+
+The owner completed the requested read-only `Get-FileHash -Algorithm
+SHA256` inspection on three `bt_*.csv` files in
+`Downloads\cuicatl_evidence`. The local filenames, byte sizes and complete
+64-character hashes are transcribed in the [post-freeze Phase 2D.2 custody
+addendum](phase-2d2-bluetooth-routing-evidence.md#post-freeze-custody-addendum--2026-10-12).
+
+**Checkpoint resolution:**
+- `bt_handshk1`: **121,030 bytes**, SHA-256
+  `5E441461996CC0097BD1FE4CDDF6EC6A90DCEDF10E673B29E4F77437FF147A26`.
+  This equals the digest documented in the earlier immutable archive.
+- `bt_recordin`: **927,757 bytes**, SHA-256
+  `BB56E2F477DB8B4FE95FBDC0E12FE86D7E5EA2353380328A092832F410382E46`.
+  Its role in the earlier failed/zero-stream experiment is **unverified**
+  until the CSV is inspected; filename alone is not proof.
+- `bt_test`: **853,855 bytes**, SHA-256
+  `FD5D5448908021DFCCFDA930BC3BBA94BC05E4BB3E033006882528B7A4CE7368`.
+  This file is **present locally** and has a recorded cryptographic identity.
+
+This updates the earlier *at-the-time* "unknown hash"/"missing from archive"
+entries: the files have been located and hashed **in Downloads**, but were
+**not** part of the original immutable 56-payload set (except
+`bt_handshk1`). The user-supplied hash outputs verify the exact 64-hex
+values reported by the Windows host; the raw bytes are not accessible here
+for an independent rehash or privacy assessment.
+
+**Outstanding:** classify CSV contents, check metadata and potential
+sensitive identifiers, compare any emailed attachment if byte identity
+matters, and choose a privacy-safe preservation path. No local file
+movement, Git upload or archive mutation is authorized by this checkpoint.
+
+The Bluetooth-off interrupted session remains **PASS** (bounded to the J8
+test). Auto built-in and P3 regression sessions remain **NOT OBSERVED**.
