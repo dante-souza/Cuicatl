@@ -198,3 +198,28 @@ Get-ChildItem -LiteralPath (Join-Path $HOME 'Downloads') -Recurse -File `
 
 Do not stage exports or full Android platform diagnostics before examining
 the contents for sensitive identifiers.
+
+## Custody clarification — `bt_test` sanitized intentionally
+
+**Owner clarification (2026-10-12):** the longer Phase 2D.2
+`bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv` was **sanitized**.
+Therefore its absence from the immutable 56-file archive must **not** be
+described as evidence of accidental loss or an unexplained missing export.
+The archive's `SHA256SUMS.csv` contains only `bt_handshk1`.
+
+The sanitization operation, location/availability of any resulting derivative,
+and retention status of the pre-sanitization source have **not been specified**.
+Do not assume that sanitization means deletion, that a source-identical original
+remains, or that an altered file has the SHA-256 hash of its original.
+
+If a sanitized derivative is retained and later selected for publication,
+record its own SHA-256, the transformation applied (for example, redacted
+metadata or rows, if applicable), which fields remain suitable for analysis,
+and a clear **SANITIZED DERIVATIVE — not original raw CSV** designation.
+Preserve the frozen Phase 2D.2 experimental interpretation as historical
+conversation evidence; do not overstate repository-level raw reproducibility.
+Intentionally withheld sensitive raw exports need not be made public solely
+to close this development increment.
+
+The **Phase 2D.3a Bluetooth-off PASS** and the pending Auto built-in/P3
+regression checks are unaffected by this archival clarification.
