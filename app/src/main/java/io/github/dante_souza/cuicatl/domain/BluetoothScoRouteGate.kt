@@ -29,6 +29,28 @@ class BluetoothScoRouteGate(private val requestedDeviceId: Int) {
         }
     }
 
+    fun connectionFailureAfterWait(isRunning: Boolean): String? =
+        when {
+            !isRunning -> "Capture stopped during Bluetooth SCO connection"
+            connection == Connection.LOST -> "Bluetooth SCO disconnected during startup"
+            connection != Connection.CONNECTED ->
+                "Bluetooth SCO audio did not connect within 8 seconds"
+            else -> null
+        }
+
+    fun routeConfirmationFailure(
+        isRunning: Boolean,
+        deviceId: Int?,
+        isBluetoothSco: Boolean,
+    ): String? =
+        when {
+            !isRunning -> "Capture stopped during Bluetooth route confirmation"
+            connection == Connection.LOST -> "Bluetooth SCO disconnected during startup"
+            connection != Connection.CONNECTED || !routeMatches(deviceId, isBluetoothSco) ->
+                "Bluetooth SCO route not confirmed; capture refused"
+            else -> null
+        }
+
     fun isConnected(): Boolean = connection == Connection.CONNECTED
 
     fun isLost(): Boolean = connection == Connection.LOST
