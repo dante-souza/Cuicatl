@@ -21,6 +21,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $null = Get-Command adb -ErrorAction Stop
 
+# Android java.util.Properties.store escapes '=' and non-ASCII characters.
+# Decode only for human-readable output; do not alter stored session metadata.
+function ConvertFrom-JavaPropertiesDisplayValue {
+    param([string]$Value)
+    $decoded = [regex]::Replace(
+        $Value,
+        '\\u([0-9a-fA-F]{4})',
+        [System.Text.RegularExpressions.MatchEvaluator] {
+            param($match)
+            return ([string][char]([Convert]::ToInt32($match.Groups[1].Value, 16)))
+        }
+    )
+    return $decoded.Replace('\=', '=').Replace('\:', ':').Replace('\\', '\')
+}
+
 $sessionIds = @(& adb -s $Serial shell run-as $Package ls files/sessions 2>&1)
 if ($LASTEXITCODE -ne 0) {
     throw ('Could not read the debug app session directory with adb run-as. ' +
@@ -71,7 +86,7 @@ $rows = @(
             Outcome = [string]$properties['outcome']
             Selection = [string]$properties['input_selection_mode']
             Route = [string]$properties['input_route_kind']
-            Input = [string]$properties['input_identity']
+            Input = ConvertFrom-JavaPropertiesDisplayValue ([string]$properties['input_identity'])
             Frames = [string]$properties['frame_count']
             CapturedMs = [string]$properties['captured_ms']
             Reason = [string]$properties['interruption_reason']
