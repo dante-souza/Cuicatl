@@ -223,3 +223,36 @@ to close this development increment.
 
 The **Phase 2D.3a Bluetooth-off PASS** and the pending Auto built-in/P3
 regression checks are unaffected by this archival clarification.
+
+## Mail-attachment recovery lead — 2026-10-12
+
+The owner subsequently clarified that the `bt_test` CSV **was sent by
+email**, and it is unknown whether a copy remains on the Android device
+after sanitization.
+
+Code review confirms the Cuicatl in-app `sanitizeSavedSessions()` operation
+deletes saved app sessions via `SessionRepository.deleteAllSavedSessions()`,
+deletes cached `.csv` exports via `MeasurementCsvExporter.clearCachedExports()`,
+and clears calibration/reference records. **This local-store action does not
+itself redact or transform previously emailed CSV bytes.** The prior
+description of `bt_test` as a potentially *sanitized CSV derivative* is a
+precaution, **not an established alteration of that CSV's contents**.
+Distinguish an app-store wipe from field-level sanitization of a file.
+
+Recovery priority: search the sender's **Sent** mail (and Drafts, if needed)
+for the `bt_test-d99f70ae-13e7-4d6e-973d-57102c491377.csv` attachment.
+If found, download it unchanged into a **new local review directory outside
+the immutable archive and outside the repository**, record its SHA-256 and
+bytes, and review headers/provenance for sensitive information before
+deciding whether to publish. Do not stage or modify the original attachment
+as part of recovery. The sent attachment may preserve the original export,
+but **attachment existence and byte identity remain unverified** until
+the mail copy has been inspected.
+
+The local phone cache may no longer contain `bt_test` after the sanitize
+action. Do not attempt to recover it by overwriting app data, rooting a
+stable device, or rerunning an acoustic test as though it were the same
+historical capture.
+
+Archive SHA-256 status (56/56) and the Phase 2D.3a Bluetooth-off
+INTERRUPTED outcome are unaffected.
