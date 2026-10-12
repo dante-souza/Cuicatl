@@ -57,3 +57,32 @@ Make explicit Bluetooth input selection reproducible and fail-safe through start
 ## Non-goals
 
 No mandatory root, no physical calibration requirement, no invented absolute SPL claim, no assumption that a connected SCO channel implies exclusive audio from the headset microphone, no unneeded general-purpose routing selector, and no change to `main` until promotion is authorized.
+
+## Phase 2D.3a — implementation log (2026-10-12)
+
+**Code implemented on feature branch; J8 disconnect validation pending.** This is not a freeze or a claim of device behavior.
+
+- Added `BluetoothScoRouteGate`, a small, Android-independent state policy for WAITING → CONNECTED → terminal LOST. SCO broadcasts received before first CONNECTED do not count as successful transport; reconnection after LOST does not silently resume the same session.
+- Added unit tests for connection timeout/cancel, correct route, missing route, wrong device/type, lost transport and a fresh start after reconnection.
+- Explicit Bluetooth startup now requires both the SCO handshake and actual `AudioRecord.routedDevice` confirmation before reporting RUNNING.
+- During recording, an actual SCO drop or disappearing/changing routed input interrupts capture before newly read samples are processed. A lost SCO broadcast attempts to unblock `AudioRecord.READ_BLOCKING`, without being classified as a user Stop.
+- AudioRecord, audio preprocessors, SCO receiver and Bluetooth SCO are cleaned up before issuing terminal callbacks; this prevents a new session being displayed as ready while the old session still holds those resources.
+- Auto routing behavior for built-in/P3 is deliberately left unchanged in this increment.
+- Static CI gate: `testDebugUnitTest lintDebug assembleDebug`; check the final feature-head Actions run before calling it passed.
+
+### Manual J8 gate for this increment
+
+Using the J8 serial `38c19745`, from Windows PowerShell in the local repository:
+
+```powershell
+git fetch origin --prune
+git switch feature/phase-2d3-bluetooth-robustness
+git pull --ff-only
+make check
+make install-j8
+make open-j8
+```
+
+Capture one short control session on Auto/built-in, one Auto/P3 session, then a selected EDIFIER GM3 Bluetooth session. Disconnect GM3 while recording and verify **INTERRUPTED**, route/provenance preserved, and no fallback to built-in. Reconnect and verify a **new explicit Start** is necessary. Export the session CSVs and save the original screenshots and SHA-256 manifest. Distinguish a genuinely disconnected device from a manually silent/muffled device: the former should interrupt as a transport/route event; the latter remains acoustically **unverified** unless there is non-zero signal.
+
+**Known limitation:** Android SCO broadcasts and `AudioRecord` behavior are vendor-dependent. The J8 regression gate is essential; unit tests cannot replace it.
