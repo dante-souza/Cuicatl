@@ -33,5 +33,25 @@ jobs:
       - name: Verify Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
+      - name: Validate PowerShell evidence helpers
+        shell: pwsh
+        run: |
+          $paths = @(
+            'scripts/phase2-evidence-audit.ps1',
+            'scripts/phase2d3a-session-outcomes-j8.ps1'
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path).Path, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_ }
+              throw "PowerShell syntax check failed: $path"
+            }
+            Write-Host "PowerShell syntax OK: $path"
+          }
+
       - name: Run tests, lint, and debug build
         run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
