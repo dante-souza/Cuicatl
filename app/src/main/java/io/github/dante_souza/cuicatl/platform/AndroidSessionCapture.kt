@@ -134,6 +134,12 @@ class AndroidSessionCapture(
                                 AudioManager.SCO_AUDIO_STATE_ERROR ->
                                     gate.observeScoState(connected = false)
                             }
+                            // READ_BLOCKING can otherwise outlive a lost SCO transport.
+                            // Do not set stopRequested: this is an interruption, not Stop.
+                            if (gate.isLost() &&
+                                active.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                                runCatching { active.stop() }
+                            }
                         }
                     }
                 }
@@ -151,11 +157,8 @@ class AndroidSessionCapture(
                     SystemClock.elapsedRealtime() < scoDeadline) {
                     Thread.sleep(100)
                 }
-                check(running.get()) { "Capture stopped during Bluetooth SCO connection" }
-                check(!gate.isLost()) { "Bluetooth SCO disconnected during startup" }
-                check(gate.isConnected()) {
-                    "Bluetooth SCO audio did not connect within 8 seconds"
-                }
+                gate.connectionFailureAfterWait(isRunning = running.get())
+                    ?.let { error(it) }
                 if (!active.setPreferredDevice(target)) {
                     error("Bluetooth SCO microphone preference rejected")
                 }
@@ -187,14 +190,12 @@ class AndroidSessionCapture(
                     ) && SystemClock.elapsedRealtime() < deadline) {
                     Thread.sleep(100)
                 }
-                check(running.get()) { "Capture stopped during Bluetooth route confirmation" }
-                check(!gate.isLost()) { "Bluetooth SCO disconnected during startup" }
-                check(gate.isConnected() && gate.routeMatches(
-                    active.routedDevice?.id,
-                    active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                )) {
-                    "Bluetooth SCO route not confirmed; capture refused"
-                }
+                gate.routeConfirmationFailure(
+                    isRunning = running.get(),
+                    deviceId = active.routedDevice?.id,
+                    isBluetoothSco =
+                        active.routedDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                )?.let { error(it) }
             }
             check(running.get()) { "Capture stopped before recording started" }
             startedAtElapsedRealtime = SystemClock.elapsedRealtime()
@@ -300,6 +301,7 @@ class AndroidSessionCapture(
                 val read = active.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
                 if (read < 0) {
                     if (!running.get() || stopRequested.get()) break
+                    ensureRouteUnchanged()
                     error("AudioRecord.read failed with code " + read)
                 }
                 if (read == 0) {
